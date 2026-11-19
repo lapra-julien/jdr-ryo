@@ -80,14 +80,23 @@ body[data-player="ryo"] .dex-screen::before{background-image:url("assets/wm-kuma
   border:2.5px solid var(--ink); border-radius:var(--radius);
   box-shadow:0 3px 0 rgba(35,37,94,.85); padding:12px; margin:0 0 12px;
 }
+/* Tailles de filigrane alignées sur la démo : base par joueur (Neko 126 px,
+   Kuma 184 px), carte ×1, carte MJ ×1,15, passeport ×0,8, personnage ×0,58. */
+:root{--wm-w:128px}
+body[data-player="julien"]{--wm-w:126px}
+body[data-player="ryo"]{--wm-w:184px}
 .card::after{
-  content:""; position:absolute; right:-12px; bottom:-16px; width:128px; height:128px;
+  content:""; position:absolute; right:-12px; bottom:-16px; width:var(--wm-w); height:var(--wm-w);
   background:center/contain no-repeat; pointer-events:none;
   /* pas d'opacity ici : les wm-*.png portent déjà leur alpha de filigrane (~15 %) */
 }
 body[data-player="julien"] .card::after{background-image:url("assets/wm-neko.png")}
 body[data-player="ryo"] .card::after{background-image:url("assets/wm-kuma.png")}
-.card.neutral::after{background-image:url("assets/wm-pokeball.png")}
+#mjCard::after{width:calc(var(--wm-w)*1.15); height:calc(var(--wm-w)*1.15)}
+.card.passport-card::after{width:calc(var(--wm-w)*.8); height:calc(var(--wm-w)*.8)}
+/* Poké Ball réservée aux cartes de tour, aux quêtes et aux entrées de journal
+   (démo) — les autres cartes portent la mascotte du joueur. */
+body .card.turn-card::after, body .card.quest-card::after, body .card.journal-entry::after{background-image:url("assets/wm-pokeball.png")}
 .card > *{position:relative; z-index:1}
 .card h2,.card h3{margin:0 0 8px}
 .pill{
@@ -96,6 +105,11 @@ body[data-player="ryo"] .card::after{background-image:url("assets/wm-kuma.png")}
 }
 .pill.blue{background:#cfe4ff}
 .pill.grey{background:#e9e9f2}
+.pill.gold{background:linear-gradient(180deg,#ffe98a,#f5b301)}
+.linkbtn{
+  background:none; border:none; color:var(--blue); font:inherit; font-weight:800;
+  cursor:pointer; padding:8px 2px 2px; text-decoration:underline; display:inline-block;
+}
 .muted{color:#5a5e8f;font-size:.85rem}
 .small{font-size:.82rem}
 .btn{
@@ -127,6 +141,10 @@ body[data-player="ryo"] .card::after{background-image:url("assets/wm-kuma.png")}
 .tc-name{font-weight:800;font-size:1.15rem}
 .tc-game{font-weight:700;color:var(--ink2)}
 .tc-lang{font-size:.75rem;color:#5a5e8f}
+.tc-go{
+  margin-top:8px; background:var(--yellow); color:var(--ink); border:2px solid var(--ink);
+  border-radius:8px; padding:5px 12px; font-weight:800; font-size:.82rem; box-shadow:0 2px 0 var(--ink);
+}
 .entry-note{font-size:.78rem;color:#5a5e8f;margin-top:16px}
 /* ---------- Accueil ---------- */
 .infoband{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
@@ -135,6 +153,14 @@ body[data-player="ryo"] .card::after{background-image:url("assets/wm-kuma.png")}
 }
 .ib .ib-k{font-size:.66rem; text-transform:uppercase; letter-spacing:.08em; opacity:.85}
 .ib .ib-v{font-weight:800; font-size:.95rem; line-height:1.25}
+.ib .ib-sub{font-size:.74rem; font-weight:700; opacity:.82; margin-top:1px}
+/* Bande déco bas d'accueil (démo) : Poké Ball / Centre Pokémon / Super Ball */
+.deco-strip{
+  display:flex; align-items:flex-end; justify-content:center; gap:12px; flex-wrap:wrap;
+  background:var(--card); border:2px dashed rgba(35,37,94,.45); border-radius:var(--radius);
+  padding:12px; box-shadow:0 3px 0 rgba(35,37,94,.85); margin:0 0 12px;
+}
+.deco-strip img{image-rendering:pixelated; object-fit:contain}
 .place-wrap{margin:0 0 12px}
 .place-img{width:100%; display:block; border:2.5px solid var(--ink); border-radius:var(--radius); box-shadow:0 3px 0 rgba(35,37,94,.85)}
 .place-split{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -236,6 +262,10 @@ textarea.action-input{
 }
 .pcard-face{width:74px; height:74px; border-radius:50%; object-fit:cover; border:3px solid var(--ink); background:#eaf2ff}
 .pcard-name{font-weight:900; font-size:1.03rem; margin-top:4px; line-height:1.2}
+.pcard-loc{
+  display:inline-block; margin-top:5px; font-size:.7rem; font-weight:800; line-height:1.25;
+  border:2px solid var(--line); border-radius:999px; padding:2px 9px; background:#eaf2ff; color:var(--ink2);
+}
 .pcard-status{
   display:inline-block; margin-top:5px; font-size:.7rem; font-weight:800; line-height:1.25;
   border:2px solid var(--ink); border-radius:999px; padding:2px 9px; background:#e9e9f2; color:var(--ink2);
@@ -335,6 +365,23 @@ button.ls-row{border-color:var(--ink)}
 .ls-row.locked{opacity:.48; filter:grayscale(.5); cursor:default}
 details.fold{border:2px solid var(--line); border-radius:12px; padding:8px 10px; margin:0 0 10px; background:#fffef9}
 details.fold > summary{font-weight:800; cursor:pointer; color:var(--ink2)}
+/* Vitrine badges de l'onglet Objectifs (démo) : compteur, %, barre */
+.badge-block{margin-top:12px}
+.badge-head{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+.badge-head .bb-name{font-weight:900}
+.badge-pct{font-family:"DotGothic16","Noto Sans JP",sans-serif; font-size:1.35rem; color:var(--ink2)}
+.hpbar.bigbar{height:15px}
+.badge-block .badges-row{margin-top:8px}
+/* Étapes de quête + tableau du devis (démo) */
+.quest-steps{list-style:none; padding:0; margin:10px 0 0}
+.quest-steps li{display:flex; gap:8px; align-items:flex-start; margin:6px 0; font-size:.9rem; line-height:1.4}
+.quest-steps .pill{flex:0 0 auto; margin:0}
+.budget-h{margin:16px 0 4px; font-size:1.02rem}
+.budget{width:100%; border-collapse:collapse; font-size:.9rem; margin-top:6px; background:#fff}
+.budget td,.budget th{padding:7px 9px; border-top:1.5px solid var(--line); text-align:left; vertical-align:top}
+.budget th{background:var(--cream); font-weight:800}
+.budget td:last-child,.budget th:last-child{text-align:right; white-space:nowrap; font-weight:800}
+.budget tr.total td{font-weight:900; border-top:2.5px solid var(--ink); background:var(--yellow); color:var(--ink)}
 .badges-row{display:flex; flex-wrap:wrap; gap:8px}
 .badge-cell{text-align:center; width:64px}
 .badge-cell img{width:44px;height:44px;object-fit:contain}
@@ -344,7 +391,23 @@ details.fold > summary{font-weight:800; cursor:pointer; color:var(--ink2)}
 .mini-team button{background:#fff;border:2px solid var(--ink);border-radius:10px;padding:5px;cursor:pointer}
 .mini-team img{width:44px;height:44px;image-rendering:pixelated;display:block}
 /* ---------- Personnages ---------- */
-.char-item{border:2px solid var(--line); border-radius:12px; background:#fff; margin:0 0 8px; overflow:hidden}
+/* Groupes repliables (démo) : en-tête = nom du groupe + nombre + noms */
+.char-group{margin:0 0 10px}
+.char-group > summary{cursor:pointer; list-style:none; padding:4px 0 8px}
+.char-group > summary::-webkit-details-marker{display:none}
+.char-group > summary .obj-cat{margin:0; display:inline}
+.char-group .cg-meta{font-size:.78rem; color:#5a5e8f; font-weight:700}
+.char-item{position:relative; border:2px solid var(--line); border-radius:12px; background:#fff; margin:0 0 8px; overflow:hidden}
+/* Filigrane mascotte des fiches personnages : ×0,58 (démo) */
+.char-item::after{
+  content:""; position:absolute; right:-8px; bottom:-10px; width:calc(var(--wm-w)*.58); height:calc(var(--wm-w)*.58);
+  background:center/contain no-repeat; pointer-events:none;
+}
+body[data-player="julien"] .char-item::after{background-image:url("assets/wm-neko.png")}
+body[data-player="ryo"] .char-item::after{background-image:url("assets/wm-kuma.png")}
+.char-item > *{position:relative; z-index:1}
+.char-item .ci-main{min-width:0}
+.char-item .ci-status{margin:3px 0 0; white-space:normal; text-align:left}
 .char-item > summary{list-style:none; cursor:pointer; padding:10px 12px; display:flex; gap:10px; align-items:center}
 .char-item > summary::-webkit-details-marker{display:none}
 .char-item .ci-face{width:46px;height:46px;border-radius:50%;object-fit:cover;border:2px solid var(--ink);background:#eaf2ff;flex:0 0 auto}
