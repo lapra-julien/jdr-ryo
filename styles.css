@@ -414,6 +414,10 @@ body[data-player="ryo"] .char-item::after{background-image:url("assets/wm-kuma.p
 .char-item .ci-sprite{width:46px;height:46px;image-rendering:pixelated;flex:0 0 auto}
 .char-item .ci-name{font-weight:800}
 .char-item .ci-role{font-size:.76rem;color:#5a5e8f}
+.char-item .ci-expand{margin-left:auto; flex:0 0 auto; display:flex; align-items:center; gap:5px; color:#3d5a99; padding-left:8px}
+.char-item .ci-expand-txt{font-size:.7rem; font-weight:700; letter-spacing:.01em; white-space:nowrap}
+.char-item .ci-chev{font-size:1rem; line-height:1; font-weight:900; transition:transform .18s ease}
+.char-item[open ] .ci-chev{transform:rotate(180deg)}
 .char-item .ci-body{padding:0 12px 10px; font-size:.9rem}
 .search-input{width:100%; font:inherit; padding:9px 12px; border:2.5px solid var(--ink); border-radius:12px; margin-bottom:10px; background:#fff; color:var(--ink)}
 /* ---------- Carte ---------- */
