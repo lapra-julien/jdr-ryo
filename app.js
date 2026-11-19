@@ -1735,8 +1735,30 @@ setInterval(function () {
   }).catch(function () {});
 }, 30000);
 document.addEventListener("visibilitychange", function () {
-  if (!document.hidden && me && DB) loadActions().then(function () { if (tab === "home") render(); }).catch(function () {});
+  if (!document.hidden) resyncOnReturn();
 });
+/* pageshow : restauration depuis le cache de navigation iOS (page figée),
+   où visibilitychange ne suffit pas toujours. */
+window.addEventListener("pageshow", function () { resyncOnReturn(); });
+/* Resynchronisation au retour au premier plan (réouverture de l'appli,
+   déverrouillage, retour d'un autre onglet…) : si le tour ou la phase a
+   changé pendant l'absence, rechargement complet immédiat — avant, seules
+   les actions étaient relues et une page figée en arrière-plan (classique
+   iOS) restait sur l'ancien tour jusqu'au prochain cycle de 30 s
+   (constat de Julien pour l'écran de Ryo, 2026-11-20). */
+function resyncOnReturn() {
+  if (!me || !DB) return;
+  sbGet("/game_state?id=eq.1&select=data").then(function (rows) {
+    var st = rows[0] && rows[0].data;
+    if (st && (st.turn !== DB.state.turn || st.phase !== DB.state.phase)) {
+      loadAll().then(function () { render(); }).catch(function () {});
+      return;
+    }
+    loadActions().then(function () { if (tab === "home") render(); }).catch(function () {});
+  }).catch(function () {
+    loadActions().then(function () { if (tab === "home") render(); }).catch(function () {});
+  });
+}
 
 /* ================= Démarrage ================= */
 /* Service worker des notifications push : UNIQUEMENT push + clic (aucun
