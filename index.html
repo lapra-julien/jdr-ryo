@@ -1,3 +1,67 @@
 <!DOCTYPE html>
-<html lang="fr"><head><meta charset="utf-8"><title>Partie avec Ryo</title></head>
-<body><h1>Appli partagée — partie avec Ryo</h1><p>En construction.</p></body></html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pokémon Neko — Appli partagée avec Ryo</title>
+<meta name="theme-color" content="#c1272d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body data-player="">
+
+<!-- Boîtier Pokédex Rubis/Saphir, plein écran -->
+<div class="dex-shell">
+  <div class="dex-top">
+    <div class="dex-lens" aria-hidden="true"></div>
+    <div class="dex-lights" aria-hidden="true"><span class="l r"></span><span class="l y"></span><span class="l g"></span></div>
+    <div class="dex-brand">
+      <div class="dex-title" id="brandTitle">Pokémon Neko</div>
+      <div class="dex-subtitle" id="brandSub"></div>
+    </div>
+    <button id="switchPlayer" class="chip-btn" type="button" hidden></button>
+  </div>
+
+  <div class="dex-screen">
+    <!-- Écran d'entrée : sélecteur unique joueur + langue -->
+    <section id="entry" class="entry" hidden>
+      <div class="entry-ball" aria-hidden="true"></div>
+      <h1 class="entry-title">Qui ouvre l’appli ?<br><span class="entry-title-jp">アプリを開くのは？</span></h1>
+      <p class="entry-sub">Choisis ton personnage — l’appli s’ouvrira dans ta langue.<br>キャラクターを選んでください — その言語でアプリが開きます。</p>
+      <div class="entry-cards">
+        <button class="trainer-card" id="pickJulien" type="button">
+          <img class="tc-img" src="assets/portrait-julien.webp" alt="Julien">
+          <span class="tc-name">Julien</span>
+          <span class="tc-game">Pokémon Neko</span>
+          <span class="tc-lang">Interface en français</span>
+        </button>
+        <button class="trainer-card" id="pickRyo" type="button">
+          <img class="tc-img" src="assets/portrait-ryo.webp" alt="Ryo">
+          <span class="tc-name">Ryo</span>
+          <span class="tc-game">ポケモン クマ</span>
+          <span class="tc-lang">日本語インターフェース</span>
+        </button>
+      </div>
+      <p class="entry-note">Un seul lien, une seule partie — le joueur et la langue changent ensemble.<br>リンクは1つ、セーブデータも1つ — プレイヤーと言語は一緒に切り替わります。</p>
+    </section>
+
+    <!-- Appli -->
+    <div id="app" hidden>
+      <main id="view" class="view"></main>
+      <footer class="foot" id="footNote"></footer>
+    </div>
+
+    <div id="loading" class="loading"><div class="load-ball" aria-hidden="true"></div><p id="loadingTxt">Chargement de la partie…</p></div>
+  </div>
+
+  <nav id="mainNav" class="bottomnav" hidden aria-label="Navigation"></nav>
+</div>
+
+<script src="config.js"></script>
+<script src="data-dex.js"></script>
+<script src="data-moves.js"></script>
+<script src="learnsets.js"></script>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

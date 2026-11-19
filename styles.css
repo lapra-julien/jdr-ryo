@@ -1,0 +1,283 @@
+/* Appli partagée JDR Pokémon avec Ryo — boîtier Pokédex Rubis/Saphir,
+   zones de texte en fond clair façon appli d'Axel, filigranes mascotte. */
+:root{
+  --shell1:#e0473a; --shell2:#b3242a; --shell3:#8e1d22;
+  --ink:#23255e; --ink2:#1d2a6b; --yellow:#ffcb05; --yellow2:#f5b301;
+  --paper:#fff8ea; --card:#fffdf6; --cream:#fdf3d8; --line:#e7dcc0;
+  --green:#2f9e44; --red:#d64545; --orange:#e8890c; --blue:#2b6cb0;
+  --radius:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:"Segoe UI",system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+  color:var(--ink); background:#5c1013;
+  -webkit-tap-highlight-color:transparent;
+}
+/* ---------- Boîtier ---------- */
+.dex-shell{
+  min-height:100dvh; display:flex; flex-direction:column;
+  background:linear-gradient(160deg,var(--shell1),var(--shell2) 55%,var(--shell3));
+  padding:10px 10px 0;
+}
+.dex-top{display:flex;align-items:center;gap:10px;padding:2px 4px 10px}
+.dex-lens{
+  width:52px;height:52px;flex:0 0 auto;border-radius:50%;
+  background:radial-gradient(circle at 35% 32%,#bfe6ff 0 18%,#5db4f0 38%,#1d6fd1 70%,#0d4f9e);
+  border:4px solid #f4f6fb; box-shadow:0 0 0 3px #7a1620, inset 0 -6px 10px rgba(0,0,0,.25);
+}
+.dex-lights{display:flex;gap:5px;align-self:flex-start;margin-top:4px}
+.dex-lights .l{width:11px;height:11px;border-radius:50%;border:2px solid rgba(0,0,0,.25);box-shadow:inset 0 -2px 3px rgba(0,0,0,.3)}
+.dex-lights .r{background:#ff5a4e}.dex-lights .y{background:#ffd83d}.dex-lights .g{background:#59d977}
+.dex-brand{flex:1;min-width:0;color:#fff}
+.dex-title{font-weight:800;font-size:1.08rem;letter-spacing:.02em;text-shadow:0 2px 0 rgba(0,0,0,.25);line-height:1.15}
+.dex-subtitle{font-size:.72rem;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip-btn{
+  flex:0 0 auto;border:2px solid var(--ink);background:var(--yellow);color:var(--ink);
+  font-weight:700;font-size:.72rem;border-radius:999px;padding:5px 10px;cursor:pointer;
+  box-shadow:0 2px 0 var(--ink);
+}
+.dex-screen{
+  flex:1; background:var(--paper); border:3px solid var(--ink); border-radius:18px;
+  box-shadow:inset 0 0 0 3px #fff, 0 4px 0 rgba(0,0,0,.25);
+  padding:12px 12px 96px; overflow-y:auto; position:relative;
+}
+/* ---------- Navigation basse flottante ---------- */
+.bottomnav{
+  position:fixed; left:50%; transform:translateX(-50%); bottom:10px; z-index:40;
+  display:flex; gap:2px; max-width:min(96vw,560px); overflow-x:auto; scrollbar-width:none;
+  background:var(--ink2); border:2.5px solid var(--ink); border-radius:999px; padding:5px;
+  box-shadow:0 6px 18px rgba(0,0,0,.45);
+}
+.bottomnav::-webkit-scrollbar{display:none}
+.bottomnav button{
+  flex:0 0 auto; border:0; background:transparent; color:#cfd4ff; cursor:pointer;
+  font:inherit; font-size:.62rem; font-weight:700; line-height:1.15;
+  display:flex; flex-direction:column; align-items:center; gap:1px;
+  padding:6px 9px; border-radius:999px; min-width:52px;
+}
+.bottomnav button .ni{font-size:1.05rem}
+.bottomnav button.on{background:var(--yellow); color:var(--ink)}
+/* ---------- Cartes et filigranes ---------- */
+.card{
+  position:relative; overflow:hidden; background:var(--card);
+  border:2.5px solid var(--ink); border-radius:var(--radius);
+  box-shadow:0 3px 0 rgba(35,37,94,.85); padding:12px; margin:0 0 12px;
+}
+.card::after{
+  content:""; position:absolute; right:-12px; bottom:-16px; width:128px; height:128px;
+  background:center/contain no-repeat; opacity:.13; pointer-events:none;
+}
+body[data-player="julien"] .card::after{background-image:url("assets/wm-neko.png")}
+body[data-player="ryo"] .card::after{background-image:url("assets/wm-kuma.png")}
+.card.neutral::after{background-image:url("assets/wm-pokeball.png");opacity:.10}
+.card > *{position:relative; z-index:1}
+.card h2,.card h3{margin:0 0 8px}
+.pill{
+  display:inline-block; background:var(--yellow); border:2px solid var(--ink); color:var(--ink);
+  font-weight:800; font-size:.72rem; border-radius:999px; padding:2px 10px; margin-bottom:8px;
+}
+.pill.blue{background:#cfe4ff}
+.pill.grey{background:#e9e9f2}
+.muted{color:#5a5e8f;font-size:.85rem}
+.small{font-size:.82rem}
+.btn{
+  border:2.5px solid var(--ink); background:var(--yellow); color:var(--ink); font:inherit;
+  font-weight:800; border-radius:12px; padding:9px 14px; cursor:pointer; box-shadow:0 3px 0 var(--ink);
+}
+.btn:active{transform:translateY(2px); box-shadow:0 1px 0 var(--ink)}
+.btn.blue{background:#cfe4ff}
+.btn:disabled{opacity:.55; cursor:default}
+/* ---------- Écran d'entrée ---------- */
+.entry{text-align:center; padding:18px 4px 8px}
+.entry-ball{
+  width:84px;height:84px;margin:0 auto 10px;border-radius:50%;
+  background:linear-gradient(#e83a30 0 46%,#22242a 46% 54%,#fff 54% 100%);
+  border:3.5px solid #22242a; position:relative;
+}
+.entry-ball::after{content:"";position:absolute;left:50%;top:50%;width:22px;height:22px;border-radius:50%;background:#fff;border:3.5px solid #22242a;transform:translate(-50%,-50%)}
+.entry-title{font-size:1.45rem;margin:6px 0 4px;color:var(--ink2)}
+.entry-title-jp{font-size:1.05rem;color:#5a5e8f}
+.entry-sub{font-size:.88rem;color:#43477c;margin:6px 0 16px}
+.entry-cards{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.trainer-card{
+  width:158px; background:var(--card); border:3px solid var(--ink); border-radius:16px;
+  box-shadow:0 4px 0 var(--ink); padding:14px 10px 12px; cursor:pointer; font:inherit; color:var(--ink);
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+}
+.trainer-card:active{transform:translateY(2px); box-shadow:0 2px 0 var(--ink)}
+.tc-img{width:96px;height:96px;object-fit:cover;border-radius:50%;border:3px solid var(--ink);background:#eaf2ff}
+.tc-name{font-weight:800;font-size:1.15rem}
+.tc-game{font-weight:700;color:var(--ink2)}
+.tc-lang{font-size:.75rem;color:#5a5e8f}
+.entry-note{font-size:.78rem;color:#5a5e8f;margin-top:16px}
+/* ---------- Accueil ---------- */
+.infoband{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.infoband .ib{
+  background:var(--ink2); color:#fff; border:2.5px solid var(--ink); border-radius:12px; padding:8px 10px;
+}
+.ib .ib-k{font-size:.66rem; text-transform:uppercase; letter-spacing:.08em; opacity:.85}
+.ib .ib-v{font-weight:800; font-size:.95rem; line-height:1.25}
+.place-wrap{margin:0 0 12px}
+.place-img{width:100%; display:block; border:2.5px solid var(--ink); border-radius:var(--radius); box-shadow:0 3px 0 rgba(35,37,94,.85)}
+.place-split{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.place-cap{font-size:.78rem;font-weight:700;margin-top:5px;color:var(--ink2)}
+/* Dés */
+.die{
+  display:flex; align-items:center; gap:10px; width:100%; text-align:left; font:inherit; cursor:pointer;
+  background:#eaf2ff; border:2.5px solid var(--ink); border-radius:12px; padding:8px 10px; margin:0 0 8px; color:var(--ink);
+}
+.die .die-face{
+  flex:0 0 auto; width:46px; height:46px; border-radius:11px; position:relative;
+  background:linear-gradient(#3a7bd5,#2456a6); border:2.5px solid var(--yellow);
+  color:#fff; font-weight:900; font-size:1.15rem; display:flex; align-items:center; justify-content:center;
+  overflow:hidden;
+}
+.die .die-face::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 118%, #fff 0 34%, transparent 35%),radial-gradient(circle at 50% -18%, #e83a30 0 34%, transparent 35%);opacity:.85}
+.die .die-face span{position:relative; z-index:1; text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.die .die-who{font-weight:800; font-size:.86rem}
+.die .die-act{font-size:.8rem; color:#43477c}
+.die .die-verdict{font-size:.8rem; font-weight:800}
+.die.rolling .die-face{animation:shake .12s infinite}
+@keyframes shake{0%{transform:rotate(-5deg)}50%{transform:rotate(5deg) translateY(-2px)}100%{transform:rotate(-3deg)}}
+.v-ok{color:var(--green)} .v-bad{color:var(--red)} .v-mid{color:var(--orange)}
+.locked-box{filter:blur(5px); user-select:none; pointer-events:none}
+.lock-note{text-align:center; font-weight:700; color:var(--ink2); background:var(--cream); border:2px dashed var(--ink); border-radius:12px; padding:8px; margin-bottom:10px}
+textarea.action-input{
+  width:100%; min-height:84px; font:inherit; font-size:.95rem; color:var(--ink);
+  border:2.5px solid var(--ink); border-radius:12px; padding:10px; background:#fff; resize:vertical;
+}
+.sent-ok{background:#e5f6e9; border:2px solid var(--green); color:#14532d; border-radius:10px; padding:8px 10px; font-weight:700; font-size:.88rem; margin-top:8px}
+.action-line{border-left:4px solid var(--yellow2); background:#fffbe9; padding:7px 10px; border-radius:0 10px 10px 0; margin:0 0 8px; font-size:.9rem}
+.action-line .al-who{font-weight:800}
+/* ---------- Équipes ---------- */
+.passports{display:flex; gap:10px; margin-bottom:12px}
+.passport-mini{
+  flex:1; display:flex; align-items:center; gap:10px; cursor:pointer; font:inherit; text-align:left; color:var(--ink);
+  background:var(--card); border:2.5px solid var(--ink); border-radius:var(--radius); box-shadow:0 3px 0 rgba(35,37,94,.85); padding:9px 10px;
+}
+.passport-mini img{width:52px;height:52px;border-radius:50%;object-fit:cover;border:2.5px solid var(--ink);background:#eaf2ff}
+.passport-mini .pm-name{font-weight:800}
+.passport-mini .pm-sub{font-size:.75rem;color:#5a5e8f}
+.player-switch{display:flex; gap:8px; margin:0 0 12px}
+.player-switch button{
+  flex:1; font:inherit; font-weight:800; cursor:pointer; padding:9px; border-radius:12px;
+  border:2.5px solid var(--ink); background:#e9e9f2; color:var(--ink);
+}
+.player-switch button.on{background:var(--yellow)}
+.team-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.poke-card{
+  background:#fff; border:2.5px solid var(--ink); border-radius:var(--radius); padding:9px; cursor:pointer;
+  box-shadow:0 3px 0 rgba(35,37,94,.85); font:inherit; color:var(--ink); text-align:left;
+}
+.poke-card img{width:64px;height:64px;image-rendering:pixelated;display:block;margin:0 auto 4px}
+.poke-card .pk-nick{font-weight:800; text-align:center; line-height:1.2}
+.poke-card .pk-sp{font-size:.76rem; color:#5a5e8f; text-align:center}
+.hpbar{height:11px; border:2px solid var(--ink); border-radius:99px; background:#eee; overflow:hidden; margin-top:6px}
+.hpbar i{display:block; height:100%; background:var(--green)}
+.hpbar i.mid{background:var(--yellow2)} .hpbar i.low{background:var(--red)}
+.hp-num{font-size:.74rem; font-weight:700; text-align:right}
+.poke-empty{
+  border:2.5px dashed #9a9ec7; border-radius:var(--radius); color:#8a8fb5; background:rgba(255,255,255,.5);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:118px; font-weight:700; font-size:.82rem; gap:4px;
+}
+.poke-egg{
+  background:var(--cream); border:2.5px solid var(--ink); border-radius:var(--radius); padding:9px;
+  box-shadow:0 3px 0 rgba(35,37,94,.85); text-align:center;
+}
+.poke-egg .egg-emoji{font-size:2rem}
+.store-btns{display:flex; gap:8px; margin-top:12px}
+.store-btns .btn{flex:1}
+/* Fiches plein écran */
+.sheet{
+  position:fixed; inset:0; z-index:60; background:rgba(20,16,60,.55);
+  display:flex; align-items:flex-end; justify-content:center;
+}
+.sheet-box{
+  background:var(--paper); width:100%; max-width:620px; max-height:92dvh; overflow-y:auto;
+  border:3px solid var(--ink); border-bottom:0; border-radius:18px 18px 0 0; padding:14px;
+}
+.sheet-head{display:flex; gap:12px; align-items:center; margin-bottom:10px}
+.sheet-head img{width:84px;height:84px;image-rendering:pixelated;background:#fff;border:2.5px solid var(--ink);border-radius:12px}
+.sheet-head .sh-name{font-size:1.25rem;font-weight:900}
+table.kv{width:100%; border-collapse:collapse; font-size:.9rem}
+table.kv th, table.kv td{border:1.5px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top}
+table.kv th{background:var(--cream); width:38%; color:var(--ink2)}
+.move-pills{display:flex; flex-wrap:wrap; gap:6px}
+.move-pill{
+  border:2px solid var(--ink); border-radius:999px; padding:4px 10px; font:inherit; font-size:.8rem; font-weight:700;
+  cursor:pointer; color:#fff; text-shadow:0 1px 1px rgba(0,0,0,.25);
+}
+.move-pill small{font-weight:600; opacity:.9}
+.move-pill.locked{opacity:.45; filter:grayscale(.4)}
+details.fold{border:2px solid var(--line); border-radius:12px; padding:8px 10px; margin:0 0 10px; background:#fffef9}
+details.fold > summary{font-weight:800; cursor:pointer; color:var(--ink2)}
+.badges-row{display:flex; flex-wrap:wrap; gap:8px}
+.badge-cell{text-align:center; width:64px}
+.badge-cell img{width:44px;height:44px;object-fit:contain}
+.badge-cell.off img{filter:grayscale(1); opacity:.35}
+.badge-cell .bc-name{font-size:.62rem; font-weight:700; line-height:1.15}
+.mini-team{display:flex; gap:8px; flex-wrap:wrap}
+.mini-team button{background:#fff;border:2px solid var(--ink);border-radius:10px;padding:5px;cursor:pointer}
+.mini-team img{width:44px;height:44px;image-rendering:pixelated;display:block}
+/* ---------- Personnages ---------- */
+.char-item{border:2px solid var(--line); border-radius:12px; background:#fff; margin:0 0 8px; overflow:hidden}
+.char-item > summary{list-style:none; cursor:pointer; padding:10px 12px; display:flex; gap:10px; align-items:center}
+.char-item > summary::-webkit-details-marker{display:none}
+.char-item .ci-face{width:46px;height:46px;border-radius:50%;object-fit:cover;border:2px solid var(--ink);background:#eaf2ff;flex:0 0 auto}
+.char-item .ci-sprite{width:46px;height:46px;image-rendering:pixelated;flex:0 0 auto}
+.char-item .ci-name{font-weight:800}
+.char-item .ci-role{font-size:.76rem;color:#5a5e8f}
+.char-item .ci-body{padding:0 12px 10px; font-size:.9rem}
+.search-input{width:100%; font:inherit; padding:9px 12px; border:2.5px solid var(--ink); border-radius:12px; margin-bottom:10px; background:#fff; color:var(--ink)}
+/* ---------- Carte ---------- */
+.kmap{position:relative; border:2.5px solid var(--ink); border-radius:var(--radius); overflow:hidden; background:#bfe3ff; touch-action:none}
+.kmap-inner{position:relative; transform-origin:0 0}
+.kmap img.map-img{width:100%; display:block}
+.kmap svg.route{position:absolute; inset:0; width:100%; height:100%; pointer-events:none}
+.kmark{position:absolute; transform:translate(-50%,-50%); z-index:3; text-align:center}
+.kmark .dot{width:15px;height:15px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 0 0 2px var(--ink);margin:0 auto}
+.kmark.visited .dot{background:var(--green)} .kmark.here .dot{background:var(--red); width:19px;height:19px; animation:pulse 1.4s infinite}
+.kmark.todo .dot{background:#b9bdd6}
+@keyframes pulse{0%{box-shadow:0 0 0 2px var(--ink),0 0 0 5px rgba(214,69,69,.5)}50%{box-shadow:0 0 0 2px var(--ink),0 0 0 10px rgba(214,69,69,.12)}100%{box-shadow:0 0 0 2px var(--ink),0 0 0 5px rgba(214,69,69,.5)}}
+.kmark .klab{
+  display:inline-block; margin-top:2px; background:rgba(255,255,255,.92); border:1.5px solid var(--ink);
+  border-radius:6px; font-size:.58rem; font-weight:800; padding:0 4px; white-space:nowrap;
+}
+.kmark.side-l .klab{transform:translateX(-38%)}
+.kmark.side-r .klab{transform:translateX(38%)}
+.legend{display:flex; gap:12px; flex-wrap:wrap; font-size:.78rem; font-weight:700; margin-top:8px}
+.legend .dot{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1.5px var(--ink);vertical-align:-1px;margin-right:4px}
+.npc-chips{display:flex; flex-wrap:wrap; gap:6px}
+.npc-chips button{border:2px solid var(--ink); background:#eaf2ff; color:var(--ink); border-radius:999px; font:inherit; font-size:.8rem; font-weight:700; padding:4px 10px; cursor:pointer}
+/* ---------- Journal / résolutions ---------- */
+.reso-text{white-space:pre-wrap; font-size:.93rem; line-height:1.5}
+.dice-lines{font-size:.83rem; background:#f4f6ff; border:1.5px solid var(--line); border-radius:10px; padding:8px 10px; margin:8px 0; white-space:pre-wrap}
+.album{display:flex; gap:8px; overflow-x:auto; padding-bottom:6px}
+.album figure{margin:0; text-align:center; flex:0 0 auto}
+.album img{width:76px;height:76px;object-fit:contain;image-rendering:pixelated;background:#fff;border:2px solid var(--ink);border-radius:12px}
+.album figcaption{font-size:.68rem;font-weight:700;margin-top:3px}
+/* ---------- Pokédex ---------- */
+.dex-count{font-weight:900; font-size:1.1rem}
+.dex-progress{height:13px;border:2px solid var(--ink);border-radius:99px;background:#eee;overflow:hidden}
+.dex-progress i{display:block;height:100%;background:linear-gradient(90deg,#e83a30,#f5b301)}
+.dex-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:8px}
+@media(min-width:520px){.dex-grid{grid-template-columns:repeat(6,1fr)}}
+.dex-cell{background:#fff;border:2px solid var(--ink);border-radius:12px;padding:6px 2px;text-align:center}
+.dex-cell img{width:52px;height:52px;object-fit:contain}
+.dex-cell.unseen img{filter:brightness(0); opacity:.28}
+.dex-cell .dc-num{font-size:.64rem;font-weight:800;color:#5a5e8f}
+.dex-cell .dc-name{font-size:.68rem;font-weight:700;line-height:1.15}
+.dex-cell .dc-check{color:var(--green);font-weight:900}
+/* ---------- Divers ---------- */
+.loading{text-align:center; padding:44px 0}
+.load-ball{width:52px;height:52px;margin:0 auto 10px;border-radius:50%;background:linear-gradient(#e83a30 0 46%,#22242a 46% 54%,#fff 54%);border:3px solid #22242a;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.foot{font-size:.72rem;color:#5a5e8f;text-align:center;margin-top:6px}
+.view h1{font-size:1.3rem; margin:2px 0 4px; color:var(--ink2)}
+.view .intro{font-size:.88rem; color:#43477c; margin:0 0 12px}
+.enc-card{display:flex; gap:10px; align-items:flex-start}
+.enc-card img{width:60px;height:60px;image-rendering:pixelated;background:#fff;border:2px solid var(--ink);border-radius:10px;flex:0 0 auto}
+.obj-cat{font-weight:900; color:var(--ink2); margin:14px 0 6px; font-size:.95rem}
+.kv-line{display:flex; justify-content:space-between; gap:8px; padding:4px 0; border-bottom:1px dashed var(--line); font-size:.9rem}
+.kv-line b{text-align:right}
