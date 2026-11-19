@@ -23,14 +23,14 @@ var EXTRA = {
   fr: { changePlayer: "Changer de joueur", loading: "Chargement de la partie…", loadError: "Impossible de charger la partie. Vérifie ta connexion, puis réessaie.",
         retry: "Réessayer", hp: "PV", money: "₽", turnW: "Tour", chapterW: "Chapitre", situation: "Situation actuelle",
         noText: "Texte non disponible.", hereYou: "Vous êtes ici", nextDest: "Prochaine destination", seenInDex: "vu au Pokédex",
-        allRoll: null, teamTitle: "Équipes", rolledStats: "Statistiques de campagne (dés archivés)", diceArchived: "dés lancés", nat20: "20 naturels", nat1: "1 naturels",
+        allRoll: null, rollOne: "Lancer", teamTitle: "Équipes", rolledStats: "Statistiques de campagne (dés archivés)", diceArchived: "dés lancés", nat20: "20 naturels", nat1: "1 naturels",
         sendFail: "Envoi impossible — réessaie dans un instant.", sending: "Envoi…", myAction: "Mon action", otherAction: "Action de {name}",
         questDone: "Terminées", noJpReso: "La version japonaise de ce tour n'est pas encore disponible.", searchNpc: "Rechercher un personnage…",
         atGym: "Arène", champion: "Champion", noPlaceImg: "Illustration à venir pour ce lieu.", albumNote: "Les compagnons du voyage, tels qu'ils sont aujourd'hui." },
   jp: { changePlayer: "プレイヤーを変更", loading: "セーブデータを読み込み中…", loadError: "データを読み込めませんでした。接続を確認して、もう一度お試しください。",
         retry: "再試行", hp: "HP", money: "円", turnW: "ターン", chapterW: "チャプター", situation: "現在の状況",
         noText: "テキストがありません。", hereYou: "現在地", nextDest: "次の目的地", seenInDex: "図鑑に登録",
-        teamTitle: "チーム", rolledStats: "キャンペーン統計（記録済みダイス）", diceArchived: "振ったダイス", nat20: "自然な20", nat1: "自然な1",
+        rollOne: "振る", teamTitle: "チーム", rolledStats: "キャンペーン統計（記録済みダイス）", diceArchived: "振ったダイス", nat20: "自然な20", nat1: "自然な1",
         sendFail: "送信できませんでした — 少し待ってからもう一度どうぞ。", sending: "送信中…", myAction: "自分のアクション", otherAction: "{name}のアクション",
         questDone: "完了済み", noJpReso: "このターンの日本語版はまだ用意されていません。", searchNpc: "キャラクターを検索…",
         atGym: "ジム", champion: "ジムリーダー", noPlaceImg: "この場所のイラストは準備中です。", albumNote: "旅の仲間たち、今の姿。" }
@@ -295,9 +295,20 @@ function viewHome() {
       h += '<p class="small">' + esc(T("diceIntro")) + '</p><div id="diceBox">' +
         dice.map(function (d, i) {
           var rolled = !!stDice[i];
-          return '<button type="button" class="die" data-die="' + i + '"><span class="die-face"><span>' + (rolled ? d.value : "?") + '</span></span>' +
-            '<span><span class="die-who">' + esc(d.who) + '</span><br><span class="die-act">' + esc(d.action) + "</span>" +
-            (rolled && d.verdict ? '<br><span class="die-verdict ' + verdictClass(d.verdict) + '">' + esc(d.verdict) + "</span>" : "") + "</span></button>";
+          return '<div class="die-cell">' +
+            '<button type="button" class="die' + (rolled ? " rolled" : "") + '" data-die="' + i + '" aria-label="' + esc(T("dieAria")) + '">' +
+            '<span class="die-scene"><span class="cube">' +
+            '<span class="cface cf-front"><span class="cnum">' + (rolled ? d.value : "?") + '</span></span>' +
+            '<span class="cface cf-top"><span class="cq">?</span></span>' +
+            '<span class="cface cf-bottom"><span class="cq">?</span></span>' +
+            '<span class="cface cf-right"><span class="cq">?</span></span>' +
+            '<span class="cface cf-left"><span class="cq">?</span></span>' +
+            '<span class="cface cf-back"><span class="cq">?</span></span>' +
+            '</span></span>' +
+            '<span class="die-meta"><span class="die-who">' + esc(d.who) + '</span><br><span class="die-act">' + esc(d.action) + "</span>" +
+            (rolled && d.verdict ? '<br><span class="die-verdict ' + verdictClass(d.verdict) + '">' + esc(d.verdict) + "</span>" : "") + "</span></button>" +
+            (rolled ? "" : '<button type="button" class="roll-one" data-roll="' + i + '">' + esc(T("rollOne")) + "</button>") +
+            "</div>";
         }).join("") + "</div>" +
         '<button type="button" class="btn blue" id="rollAll">' + esc(T("rollAll")) + "</button>";
     }
@@ -343,18 +354,25 @@ function viewHome() {
   h += "</section>";
   return h;
 }
+var rollingNow = {};
 function rollDie(i) {
   var reso = lastReso(); if (!reso) return;
   var dice = diceOf(reso); var stDice = diceState(reso.turn);
-  if (stDice[i]) return;
+  if (stDice[i] || rollingNow[i]) return;
+  rollingNow[i] = true;
   var btn = document.querySelector('[data-die="' + i + '"]');
-  if (btn) { btn.classList.add("rolling"); var face = btn.querySelector(".die-face span"); var n = 0;
-    var iv = setInterval(function () { if (face) face.textContent = String(1 + Math.floor(Math.random() * 20)); if (++n > 7) { clearInterval(iv); var fresh = diceState(reso.turn); fresh[i] = true; saveDiceState(reso.turn, fresh); render(); } }, 110);
-  } else { var fresh2 = diceState(reso.turn); fresh2[i] = true; saveDiceState(reso.turn, fresh2); render(); }
+  var one = document.querySelector('[data-roll="' + i + '"]');
+  if (one) one.disabled = true;
+  if (btn) { btn.classList.add("rolling"); var face = btn.querySelector(".cf-front .cnum"); var n = 0;
+    var iv = setInterval(function () { if (face) face.textContent = String(1 + Math.floor(Math.random() * 20)); if (++n > 7) { clearInterval(iv); delete rollingNow[i]; var fresh = diceState(reso.turn); fresh[i] = true; saveDiceState(reso.turn, fresh); render(); } }, 110);
+  } else { delete rollingNow[i]; var fresh2 = diceState(reso.turn); fresh2[i] = true; saveDiceState(reso.turn, fresh2); render(); }
 }
 function bindHome() {
   Array.prototype.forEach.call(document.querySelectorAll("[data-die]"), function (b) {
     b.addEventListener("click", function () { rollDie(parseInt(b.getAttribute("data-die"), 10)); });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-roll]"), function (b) {
+    b.addEventListener("click", function () { rollDie(parseInt(b.getAttribute("data-roll"), 10)); });
   });
   var all = $("rollAll");
   if (all) all.addEventListener("click", function () {

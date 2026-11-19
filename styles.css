@@ -122,24 +122,46 @@ body[data-player="ryo"] .card::after{background-image:url("assets/wm-kuma.png")}
 .place-img{width:100%; display:block; border:2.5px solid var(--ink); border-radius:var(--radius); box-shadow:0 3px 0 rgba(35,37,94,.85)}
 .place-split{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .place-cap{font-size:.78rem;font-weight:700;margin-top:5px;color:var(--ink2)}
-/* Dés */
+/* Dés — cube 3D qui roule au lancer, valeur finale sur la face avant */
+.die-cell{margin:0 0 10px}
 .die{
-  display:flex; align-items:center; gap:10px; width:100%; text-align:left; font:inherit; cursor:pointer;
-  background:#eaf2ff; border:2.5px solid var(--ink); border-radius:12px; padding:8px 10px; margin:0 0 8px; color:var(--ink);
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left; font:inherit; cursor:pointer;
+  background:#eaf2ff; border:2.5px solid var(--ink); border-radius:12px; padding:10px 12px; color:var(--ink);
 }
-.die .die-face{
-  flex:0 0 auto; width:46px; height:46px; border-radius:11px; position:relative;
-  background:linear-gradient(#3a7bd5,#2456a6); border:2.5px solid var(--yellow);
-  color:#fff; font-weight:900; font-size:1.15rem; display:flex; align-items:center; justify-content:center;
-  overflow:hidden;
+.die-scene{flex:0 0 auto; width:86px; height:86px; perspective:360px; display:flex; align-items:center; justify-content:center}
+.cube{position:relative; width:64px; height:64px; transform-style:preserve-3d; transform:rotateX(-13deg) rotateY(17deg)}
+.cface{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  border:2.5px solid var(--yellow); border-radius:11px; color:#fff; font-weight:900;
+  background:linear-gradient(145deg,#4a90d9,#2a5ca8); backface-visibility:hidden;
+  text-shadow:0 1px 2px rgba(0,0,0,.5);
 }
-.die .die-face::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 118%, #fff 0 34%, transparent 35%),radial-gradient(circle at 50% -18%, #e83a30 0 34%, transparent 35%);opacity:.85}
-.die .die-face span{position:relative; z-index:1; text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.cface .cnum{font-size:1.6rem; line-height:1}
+.cface .cq{font-size:1.15rem; opacity:.75}
+.cf-front{transform:rotateY(0deg) translateZ(32px); background:radial-gradient(circle at 35% 30%,#6db3f2,#2a5ca8 78%)}
+.cf-back{transform:rotateY(180deg) translateZ(32px); background:linear-gradient(145deg,#2a5ca8,#1d4076)}
+.cf-right{transform:rotateY(90deg) translateZ(32px); background:linear-gradient(145deg,#3a7bd5,#224e8c)}
+.cf-left{transform:rotateY(-90deg) translateZ(32px); background:linear-gradient(145deg,#3a7bd5,#224e8c)}
+.cf-top{transform:rotateX(90deg) translateZ(32px); background:linear-gradient(145deg,#5ea0e6,#2a5ca8)}
+.cf-bottom{transform:rotateX(-90deg) translateZ(32px); background:linear-gradient(145deg,#2456a6,#183a6e)}
+.die.rolling .cube{animation:cuberoll .88s cubic-bezier(.3,.55,.35,1) both}
+@keyframes cuberoll{
+  0%{transform:rotateX(-13deg) rotateY(17deg) rotateZ(0deg)}
+  30%{transform:rotateX(235deg) rotateY(150deg) rotateZ(55deg)}
+  55%{transform:rotateX(475deg) rotateY(395deg) rotateZ(-35deg)}
+  80%{transform:rotateX(640deg) rotateY(605deg) rotateZ(18deg)}
+  100%{transform:rotateX(707deg) rotateY(737deg) rotateZ(0deg)}
+}
 .die .die-who{font-weight:800; font-size:.86rem}
 .die .die-act{font-size:.8rem; color:#43477c}
 .die .die-verdict{font-size:.8rem; font-weight:800}
-.die.rolling .die-face{animation:shake .12s infinite}
-@keyframes shake{0%{transform:rotate(-5deg)}50%{transform:rotate(5deg) translateY(-2px)}100%{transform:rotate(-3deg)}}
+.roll-one{
+  display:block; width:100%; margin-top:6px; padding:12px 10px; font:inherit; font-size:1.08rem; font-weight:900; letter-spacing:.03em;
+  background:var(--yellow); color:var(--ink); border:2.5px solid var(--ink); border-radius:12px;
+  box-shadow:0 3px 0 var(--ink); cursor:pointer;
+}
+.roll-one:active{transform:translateY(2px); box-shadow:0 1px 0 var(--ink)}
+.roll-one:disabled{opacity:.55; cursor:default}
 .v-ok{color:var(--green)} .v-bad{color:var(--red)} .v-mid{color:var(--orange)}
 .locked-box{filter:blur(5px); user-select:none; pointer-events:none}
 .lock-note{text-align:center; font-weight:700; color:var(--ink2); background:var(--cream); border:2px dashed var(--ink); border-radius:12px; padding:8px; margin-bottom:10px}
