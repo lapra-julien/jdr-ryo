@@ -25,14 +25,22 @@ var EXTRA = {
         noText: "Texte non disponible.", hereYou: "Vous êtes ici", nextDest: "Prochaine destination", seenInDex: "vu au Pokédex",
         allRoll: null, rollOne: "Lancer", teamTitle: "Équipes", rolledStats: "Statistiques de campagne (dés archivés)", diceArchived: "dés lancés", nat20: "20 naturels", nat1: "1 naturels",
         sendFail: "Envoi impossible — réessaie dans un instant.", sending: "Envoi…", myAction: "Mon action", otherAction: "Action de {name}",
+        stSent: "Envoyée", stNone: "Non envoyée",
         questDone: "Terminées", noJpReso: "La version japonaise de ce tour n'est pas encore disponible.", searchNpc: "Rechercher un personnage…",
+        learnsetTitle: "Attaques par montée de niveau",
+        lsLoading: "Chargement des attaques officielles…", lsOffline: "Liste des attaques indisponible hors ligne.",
+        mjWorking: "Le MJ au travail",
         atGym: "Arène", champion: "Champion", noPlaceImg: "Illustration à venir pour ce lieu.", albumNote: "Les compagnons du voyage, tels qu'ils sont aujourd'hui." },
   jp: { changePlayer: "プレイヤーを変更", loading: "セーブデータを読み込み中…", loadError: "データを読み込めませんでした。接続を確認して、もう一度お試しください。",
         retry: "再試行", hp: "HP", money: "円", turnW: "ターン", chapterW: "チャプター", situation: "現在の状況",
         noText: "テキストがありません。", hereYou: "現在地", nextDest: "次の目的地", seenInDex: "図鑑に登録",
         rollOne: "振る", teamTitle: "チーム", rolledStats: "キャンペーン統計（記録済みダイス）", diceArchived: "振ったダイス", nat20: "自然な20", nat1: "自然な1",
         sendFail: "送信できませんでした — 少し待ってからもう一度どうぞ。", sending: "送信中…", myAction: "自分のアクション", otherAction: "{name}のアクション",
+        stSent: "送信済み", stNone: "未送信",
         questDone: "完了済み", noJpReso: "このターンの日本語版はまだ用意されていません。", searchNpc: "キャラクターを検索…",
+        learnsetTitle: "レベルアップで覚えるわざ",
+        lsLoading: "公式のわざデータを読み込み中…", lsOffline: "オフラインのため、わざリストを表示できません。",
+        mjWorking: "GMが作業中",
         atGym: "ジム", champion: "ジムリーダー", noPlaceImg: "この場所のイラストは準備中です。", albumNote: "旅の仲間たち、今の姿。" }
 };
 function T(k) { var d = (window.I18N && window.I18N[lang]) || {}; if (d[k] != null) return d[k]; var e = EXTRA[lang] || {}; return e[k] != null ? e[k] : k; }
@@ -53,6 +61,30 @@ function spFr(s) { if (!s) return ""; return typeof s === "string" ? s : (s.fr |
 function spName(dex, s) { if (s && typeof s === "object") { var v = pick(s); if (v) return v; } return speciesName(dex, spFr(s)); }
 function spriteOf(dex) { return dex ? "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iii/emerald/" + dex + ".png" : ""; }
 function dexImg(dex) { return dex ? "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/" + dex + ".png" : ""; }
+/* Sprites officiels des objets (dépôt PokeAPI/sprites, dossier items), résolus
+   depuis le nom FR stocké en base — jamais depuis le nom affiché : le côté JP
+   montre donc les mêmes images. Clés = normName(nom FR). Valeur = slug PokeAPI.
+   Absent de la table = pas de sprite officiel (objet de campagne, ou objet sans
+   icône d'item dans les jeux, ex. le Pokédex) → repli sur le glyphe stocké. */
+var ITEM_SPRITES = {
+  "potion": "potion", "pokeball": "poke-ball", "superball": "great-ball",
+  "baieoran": "oran-berry", "vieillecanne": "old-rod", "perle": "pearl",
+  "pierrefeu": "fire-stone", "pierreplante": "leaf-stone",
+  "ufdepokemon": "egg", "ct19megasangsue": "tm-grass"
+};
+function itemSpriteOf(frName) {
+  if (!frName) return null;
+  var key = normName(frName), slug = ITEM_SPRITES[key];
+  if (!slug && key.indexOf("ball") >= 0) slug = key.indexOf("super") >= 0 ? "great-ball" : "poke-ball";
+  return slug ? "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/" + slug + ".png" : null;
+}
+/* Pastille d'objet : le sprite officiel couvre le glyphe stocké ; si le sprite
+   est absent ou échoue (onerror), le glyphe reste visible — jamais d'image cassée. */
+function itemIconHTML(it) {
+  var src = itemSpriteOf(spFr(it.name));
+  return '<span class="item-ic">' + esc(it.icon || "•") +
+    (src ? '<img class="item-img" src="' + src + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : "") + "</span>";
+}
 
 /* ================= Supabase ================= */
 function sbGet(path) {
@@ -143,12 +175,20 @@ function buildNav() {
     b.addEventListener("click", function () { tab = b.getAttribute("data-tab"); buildNav(); renderBrand(); render(); window.scrollTo(0, 0); document.querySelector(".dex-screen").scrollTop = 0; });
   });
 }
+/* Pied de page calculé depuis les données chargées : bornes réelles des
+   résolutions en base + tour en cours (remplace l'ancien libellé figé). */
+function footerText() {
+  if (!DB || !DB.resolutions || !DB.resolutions.length || !DB.state) return "";
+  var first = DB.resolutions[0].turn, last = DB.resolutions[DB.resolutions.length - 1].turn, cur = DB.state.turn;
+  if (lang === "jp") return "実際のゲームデータ：第" + first + "〜" + last + "ターン解決済み、第" + cur + "ターン進行中。";
+  return "Données réelles de la partie : tours n°" + first + " à " + last + " résolus, tour n°" + cur + " en cours.";
+}
 function renderBrand() {
   $("brandTitle").textContent = lang === "jp" ? "ポケモン クマ" : "Pokémon Neko";
   var lbl = TABS.filter(function (tb) { return tb[0] === tab; })[0];
   var st = DB.state;
   $("brandSub").textContent = (lbl ? T(lbl[1]) : "") + " · " + X("chapterW") + " " + st.chapter + " · " + X("turnW") + " " + (lang === "jp" ? "第" + st.turn + "ターン" : "n°" + st.turn);
-  $("footNote").textContent = T("footer") || "";
+  $("footNote").textContent = footerText();
 }
 function render() {
   renderBrand();
@@ -163,6 +203,7 @@ function render() {
   else if (tab === "journal") v.innerHTML = viewJournal();
   else if (tab === "dex") v.innerHTML = viewDex();
   bindView();
+  setupMjPolling();
 }
 
 /* ================= Helpers données ================= */
@@ -263,12 +304,117 @@ function placeBlock() {
   return '<div class="place-wrap"><div class="place-split">' +
     '<div>' + imgFor(pres.julien, nameOf("julien")) + '</div><div>' + imgFor(pres.ryo, nameOf("ryo")) + "</div></div></div>";
 }
+/* État du tour en cours pour un joueur : actions envoyées (base), sinon
+   brouillon enregistré dans l'état de partie, sinon rien. Source unique
+   partagée par le bloc du haut et le bloc d'origine (synchronisés). */
+function playerTurnInfo(slug) {
+  var st = DB.state;
+  var sent = DB.actions.filter(function (a) { return a.trainer_slug === slug; });
+  var draft = (!sent.length && st.draft87 && st.draft87[slug]) ? pick(st.draft87[slug]) : null;
+  return { sent: sent, draft: draft, status: sent.length ? "sent" : (draft ? "draft" : "none") };
+}
+/* Formulaire d'envoi de l'action du joueur courant. Les identifiants sont
+   paramétrés : le bloc d'origine garde actionText/sendAction/sendMsg,
+   la copie du haut utilise les mêmes noms suffixés « Top ». Après un envoi,
+   render() ré-affiche tout : les deux blocs restent synchronisés. */
+function composerHTML(ids) {
+  var mine = DB.actions.filter(function (a) { return a.trainer_slug === me; });
+  if (mine.length) return '<div class="sent-ok">' + esc(T("sent")) + "</div>";
+  return '<label class="small" for="' + ids.text + '">' + esc(T("composerlabel")) + '</label>' +
+    '<textarea class="action-input" id="' + ids.text + '" placeholder="' + esc(T("composerph")) + '"></textarea>' +
+    '<div style="margin-top:8px"><button type="button" class="btn" id="' + ids.send + '">' + esc(T("send")) + '</button></div><div id="' + ids.msg + '"></div>';
+}
+var COMPOSER_MAIN = { text: "actionText", send: "sendAction", msg: "sendMsg" };
+var COMPOSER_TOP = { text: "actionTextTop", send: "sendActionTop", msg: "sendMsgTop" };
+/* Copie du bloc du tour, juste sous l'illustration du lieu, disposée comme
+   la référence d'Axel : deux cartes joueurs (portrait rond, nom, statut),
+   puis le texte de l'action de chacun, puis le même formulaire d'envoi. */
+function turnTopHTML() {
+  var st = DB.state;
+  var h = '<section class="card" id="turnTop"><span class="pill">' + (lang === "jp" ? "第" + st.turn + "ターン" : "Tour n°" + st.turn) + "</span><h3>" + esc(T("composertitle")) + "</h3>";
+  h += '<div class="duel-cards">' + ["julien", "ryo"].map(function (slug) {
+    var info = playerTurnInfo(slug);
+    var c = charOf(slug) || {};
+    var img = c.img || ("assets/portrait-" + slug + ".webp");
+    var stLbl = info.status === "sent" ? "📤 " + X("stSent") : (info.status === "draft" ? "📝 " + T("draftLbl") : "⌛ " + X("stNone"));
+    return '<div class="pcard"><img class="pcard-face" src="' + esc(img) + '" alt="">' +
+      '<div class="pcard-name">' + esc(nameOf(slug)) + '</div>' +
+      '<div class="pcard-status ' + info.status + '">' + esc(stLbl) + "</div></div>";
+  }).join("") + "</div>";
+  h += ["julien", "ryo"].map(function (slug) {
+    var info = playerTurnInfo(slug);
+    var body;
+    if (info.sent.length) body = info.sent.map(function (a) { return esc(a.text); }).join("<br>");
+    else if (info.draft) body = esc(info.draft);
+    else body = '<span class="muted">' + esc(T("noaction")) + "</span>";
+    return '<div class="duel-line"><span class="dl-who">' + esc(nameOf(slug)) + " :</span> " + body + "</div>";
+  }).join("");
+  h += composerHTML(COMPOSER_TOP);
+  h += "</section>";
+  return h;
+}
 function diceState(turn) {
   try { var all = JSON.parse(localStorage.getItem(LS_DICE) || "{}"); return all[turn] || {}; } catch (e) { return {}; }
 }
 function saveDiceState(turn, st) {
   try { var all = JSON.parse(localStorage.getItem(LS_DICE) || "{}"); all[turn] = st; localStorage.setItem(LS_DICE, JSON.stringify(all)); } catch (e) {}
 }
+/* ============ Statut de résolution du MJ, en temps réel ============
+   Le MJ publie sa progression dans game_state.data.mjStatus :
+   { turn, step, updatedAt } — step = index (base 1) de l'étape EN COURS, de 1 à 6.
+   L'accueil affiche alors une carte « Le MJ au travail » près du bloc du tour :
+   étapes terminées ✓, étape en cours en évidence (pulsation douce), à venir grisées.
+   Tant que l'étape finale (6) n'est pas atteinte, l'appli réinterroge game_state
+   toutes les ~10 s et met la carte à jour sans rechargement ; à l'étape finale,
+   le polling s'arrête. Sans mjStatus, aucune carte n'est affichée. */
+var MJ_STEPS = {
+  fr: ["Actions reçues", "Vérification de la partie", "Lecture de vos actions", "Résolution du tour", "Écriture du résultat", "Terminé — nouveau tour ouvert"],
+  jp: ["アクション受信済み", "ゲームの状態を確認中", "アクションを読み取り中", "ターンを解決中", "結果を書き込み中", "完了 — 次のターンが開きました"]
+};
+function mjStatusOf() {
+  var s = DB && DB.state ? DB.state.mjStatus : null;
+  return (s && typeof s.step === "number" && isFinite(s.step)) ? s : null;
+}
+function mjCardInner(s) {
+  var step = Math.max(1, Math.min(6, Math.round(s.step)));
+  var labels = MJ_STEPS[lang] || MJ_STEPS.fr;
+  var rows = labels.map(function (lbl, i) {
+    var n = i + 1;
+    var cls, ico;
+    if (n < step || (n === step && step >= 6)) { cls = "done" + (n === step ? " final" : ""); ico = "✓"; }
+    else if (n === step) { cls = "current"; ico = "●"; }
+    else { cls = "todo"; ico = String(n); }
+    return '<div class="mj-step ' + cls + '"><span class="mj-ico">' + ico + '</span><span class="mj-lbl">' + esc(lbl) + "</span></div>";
+  }).join("");
+  return '<span class="pill blue">' + esc(X("mjWorking")) + "</span>" +
+    (s.turn ? '<span class="muted small">' + (lang === "jp" ? "第" + s.turn + "ターン" : "Tour n°" + s.turn) + "</span>" : "") +
+    '<div class="mj-steps">' + rows + "</div>";
+}
+function mjCardHTML() {
+  var s = mjStatusOf();
+  return s ? '<section class="card" id="mjCard">' + mjCardInner(s) + "</section>" : "";
+}
+var mjPollTimer = null;
+function setupMjPolling() {
+  if (mjPollTimer) { clearInterval(mjPollTimer); mjPollTimer = null; }
+  if (tab !== "home") return;
+  var s = mjStatusOf();
+  if (!s || s.step >= 6) return;
+  mjPollTimer = setInterval(function () {
+    if (tab !== "home") { clearInterval(mjPollTimer); mjPollTimer = null; return; }
+    if (document.hidden) return;
+    sbGet("/game_state?id=eq.1&select=data").then(function (rows) {
+      if (!rows || !rows[0] || !rows[0].data) return;
+      DB.state = rows[0].data;
+      var ns = mjStatusOf();
+      var el = $("mjCard");
+      if (!ns) { if (el) el.remove(); clearInterval(mjPollTimer); mjPollTimer = null; return; }
+      if (el) el.innerHTML = mjCardInner(ns);
+      if (ns.step >= 6) { clearInterval(mjPollTimer); mjPollTimer = null; }
+    }).catch(function () { /* réseau : on réessaiera au prochain cycle */ });
+  }, 10000);
+}
+
 function viewHome() {
   var st = DB.state, reso = lastReso();
   var h = "";
@@ -283,6 +429,10 @@ function viewHome() {
     '<div class="ib"><div class="ib-k">' + esc(T("bandPlace")) + '</div><div class="ib-v">' + esc(locTxt) + '</div></div>' +
     '<div class="ib"><div class="ib-k">' + esc(T("bandTurn")) + '</div><div class="ib-v">' + (lang === "jp" ? "第" + st.turn + "ターン（進行中）" : "Tour n°" + st.turn + " — en cours") + "</div></div></div>";
   h += placeBlock();
+  /* Copie du bloc du tour, juste sous l'illustration du lieu */
+  h += turnTopHTML();
+  /* Statut de résolution du MJ en temps réel (si le MJ en publie un) */
+  h += mjCardHTML();
   /* Phase de dés + résolution du dernier tour */
   if (reso) {
     var dice = diceOf(reso);
@@ -292,25 +442,24 @@ function viewHome() {
       '<h2>' + esc(T("lastResoTitle")) + " — " + (lang === "jp" ? "第" + reso.turn + "ターン" : "tour n°" + reso.turn) + '</h2>' +
       '<p class="muted small">' + esc(pick(reso.clock) || "") + " · " + esc(pick(reso.place) || locTxt) + "</p>";
     if (dice.length) {
-      h += '<p class="small">' + esc(T("diceIntro")) + '</p><div id="diceBox">' +
+      var rolledCount = dice.filter(function (d, i) { return stDice[i]; }).length;
+      h += '<p class="small">' + esc(T("diceIntro")) + '</p><div id="diceBox" class="roll-grid">' +
         dice.map(function (d, i) {
           var rolled = !!stDice[i];
-          return '<div class="die-cell">' +
-            '<button type="button" class="die' + (rolled ? " rolled" : "") + '" data-die="' + i + '" aria-label="' + esc(T("dieAria")) + '">' +
-            '<span class="die-scene"><span class="cube">' +
-            '<span class="cface cf-front"><span class="cnum">' + (rolled ? d.value : "?") + '</span></span>' +
-            '<span class="cface cf-top"><span class="cq">?</span></span>' +
-            '<span class="cface cf-bottom"><span class="cq">?</span></span>' +
-            '<span class="cface cf-right"><span class="cq">?</span></span>' +
-            '<span class="cface cf-left"><span class="cq">?</span></span>' +
-            '<span class="cface cf-back"><span class="cq">?</span></span>' +
-            '</span></span>' +
-            '<span class="die-meta"><span class="die-who">' + esc(d.who) + '</span><br><span class="die-act">' + esc(d.action) + "</span>" +
-            (rolled && d.verdict ? '<br><span class="die-verdict ' + verdictClass(d.verdict) + '">' + esc(d.verdict) + "</span>" : "") + "</span></button>" +
+          var tc = rolled ? dieTileClass(d) : { cls: "", crit: false };
+          return '<div class="roll-cell">' +
+            '<button type="button" class="roll-die' + (rolled ? " landed" + (tc.cls ? " " + tc.cls : "") + (tc.crit ? " crit" : "") : "") + '" data-die="' + i + '"' + (rolled ? " disabled" : "") + ' aria-label="' + esc(T("dieAria")) + '">' +
+            '<span class="roll-in"><span class="roll-face">' + (rolled ? d.value : "?") + '</span><span class="roll-tag">d20</span></span></button>' +
+            '<div class="roll-label"><span class="who">' + esc(d.who) + "</span>" +
+            (d.action ? '<span class="what">' + esc(d.action) + "</span>" : "") +
+            /* anti-spoiler : le verdict n'entre dans le DOM qu'une fois le dé lancé */
+            (rolled && d.verdict ? '<span class="outcome' + (tc.cls ? " " + tc.cls : "") + '">' + esc(d.verdict) + "</span>" : "") +
+            "</div>" +
             (rolled ? "" : '<button type="button" class="roll-one" data-roll="' + i + '">' + esc(T("rollOne")) + "</button>") +
             "</div>";
         }).join("") + "</div>" +
-        '<button type="button" class="btn blue" id="rollAll">' + esc(T("rollAll")) + "</button>";
+        '<div class="roll-actions"><button type="button" class="btn blue" id="rollAll">' + esc(T("rollAll")) + '</button>' +
+        '<span class="small muted" id="rollProgress">' + esc(T("diceProgress").replace("{a}", rolledCount).replace("{b}", dice.length)) + "</span></div>";
     }
     var resoTxt = pick(reso.text);
     h += '<div id="resoBox" style="margin-top:12px">';
@@ -330,42 +479,85 @@ function viewHome() {
   /* Objectif (Accueil + Journal uniquement) */
   var obj = pick(st.objective);
   if (obj) h += '<section class="card"><span class="pill">' + esc(T("objlabel")) + '</span><div class="reso-text">' + esc(obj) + "</div></section>";
-  /* Actions du tour en cours + composer */
+  /* Actions du tour en cours + composer (bloc d'origine, synchronisé avec la copie du haut) */
   h += '<section class="card"><span class="pill">' + (lang === "jp" ? "第" + st.turn + "ターン" : "Tour n°" + st.turn) + "</span><h3>" + esc(T("composertitle")) + "</h3>";
-  var draft = (st.draft87 && st.draft87[me === "julien" ? "ryo" : "julien"]) || (st.draft87 && st.draft87.ryo);
   ["julien", "ryo"].forEach(function (slug) {
-    var sent = DB.actions.filter(function (a) { return a.trainer_slug === slug; });
-    sent.forEach(function (a) {
+    var info = playerTurnInfo(slug);
+    info.sent.forEach(function (a) {
       h += '<div class="action-line"><span class="al-who">' + esc(nameOf(slug)) + '</span> · <span class="muted small">' + esc(a.status || "") + "</span><br>" + esc(a.text) + "</div>";
     });
-    if (!sent.length && st.draft87 && st.draft87[slug]) {
-      var dtxt = pick(st.draft87[slug]);
-      if (dtxt) h += '<div class="action-line"><span class="al-who">' + esc(nameOf(slug)) + '</span> · <span class="muted small">' + esc(T("draftLbl")) + "</span><br>" + esc(dtxt) + "</div>";
+    if (info.draft) {
+      h += '<div class="action-line"><span class="al-who">' + esc(nameOf(slug)) + '</span> · <span class="muted small">' + esc(T("draftLbl")) + "</span><br>" + esc(info.draft) + "</div>";
     }
   });
-  var mine = DB.actions.filter(function (a) { return a.trainer_slug === me; });
-  if (!mine.length) {
-    h += '<label class="small" for="actionText">' + esc(T("composerlabel")) + '</label>' +
-      '<textarea class="action-input" id="actionText" placeholder="' + esc(T("composerph")) + '"></textarea>' +
-      '<div style="margin-top:8px"><button type="button" class="btn" id="sendAction">' + esc(T("send")) + '</button></div><div id="sendMsg"></div>';
-  } else {
-    h += '<div class="sent-ok">' + esc(T("sent")) + "</div>";
-  }
+  h += composerHTML(COMPOSER_MAIN);
   h += "</section>";
   return h;
 }
+/* Classe de tuile façon démo : couleur selon le verdict, dorée si réussite nette. */
+function dieTileClass(d) {
+  var v = d.verdict || "";
+  var cls = "";
+  /* précédence alignée sur verdictClass() : le partiel (jaune) prime sur l'échec */
+  if (/部分的|辛勝|partielle|justesse/.test(v)) cls = "mid";
+  else if (/失敗|échec/.test(v)) cls = "bad";
+  else if (/成功|réussite/.test(v)) cls = "ok";
+  return { cls: cls, crit: /réussite nette|大成功|クリティカル|決定的|明確な成功/.test(v) };
+}
+function updateRollProgress() {
+  var el = $("rollProgress"); if (!el) return;
+  var reso = lastReso(); if (!reso) return;
+  var dice = diceOf(reso); var stDice = diceState(reso.turn);
+  var n = dice.filter(function (d, i) { return stDice[i]; }).length;
+  el.textContent = T("diceProgress").replace("{a}", n).replace("{b}", dice.length);
+}
 var rollingNow = {};
+/* Lancer façon démo : la tuile sautille (dieBounce) pendant que les valeurs
+   défilent sur la face (~1 s), puis elle retombe sur sa vraie valeur (pop +
+   étincelles) et le verdict est créé dans le DOM à cet instant seulement.
+   La résolution ne se déverrouille (render) que lorsque tous les dés sont tombés. */
 function rollDie(i) {
   var reso = lastReso(); if (!reso) return;
   var dice = diceOf(reso); var stDice = diceState(reso.turn);
   if (stDice[i] || rollingNow[i]) return;
-  rollingNow[i] = true;
+  var d = dice[i]; if (!d) return;
   var btn = document.querySelector('[data-die="' + i + '"]');
   var one = document.querySelector('[data-roll="' + i + '"]');
+  if (!btn) { var f0 = diceState(reso.turn); f0[i] = true; saveDiceState(reso.turn, f0); render(); return; }
+  rollingNow[i] = true;
   if (one) one.disabled = true;
-  if (btn) { btn.classList.add("rolling"); var face = btn.querySelector(".cf-front .cnum"); var n = 0;
-    var iv = setInterval(function () { if (face) face.textContent = String(1 + Math.floor(Math.random() * 20)); if (++n > 7) { clearInterval(iv); delete rollingNow[i]; var fresh = diceState(reso.turn); fresh[i] = true; saveDiceState(reso.turn, fresh); render(); } }, 110);
-  } else { delete rollingNow[i]; var fresh2 = diceState(reso.turn); fresh2[i] = true; saveDiceState(reso.turn, fresh2); render(); }
+  btn.classList.add("rolling");
+  btn.disabled = true;
+  var face = btn.querySelector(".roll-face");
+  var reduced = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var iv = null;
+  if (!reduced) iv = setInterval(function () { if (face) face.textContent = String(1 + Math.floor(Math.random() * 20)); }, 55);
+  setTimeout(function () {
+    if (iv) clearInterval(iv);
+    delete rollingNow[i];
+    var fresh = diceState(reso.turn); fresh[i] = true; saveDiceState(reso.turn, fresh);
+    if (btn.isConnected) {
+      if (face) face.textContent = String(d.value);
+      btn.classList.remove("rolling");
+      var tc = dieTileClass(d);
+      btn.classList.add("landed", "pop");
+      if (tc.cls) btn.classList.add(tc.cls);
+      if (tc.crit) btn.classList.add("crit");
+      if (d.verdict) {
+        var label = btn.parentNode.querySelector(".roll-label");
+        if (label && !label.querySelector(".outcome")) {
+          var oc = document.createElement("span");
+          oc.className = "outcome" + (tc.cls ? " " + tc.cls : "");
+          oc.textContent = d.verdict;
+          label.appendChild(oc);
+        }
+      }
+      if (one) one.remove();
+    }
+    updateRollProgress();
+    var now = diceState(reso.turn);
+    if (dice.every(function (dd, j) { return now[j]; })) setTimeout(function () { render(); }, 750);
+  }, reduced ? 200 : 1000);
 }
 function bindHome() {
   Array.prototype.forEach.call(document.querySelectorAll("[data-die]"), function (b) {
@@ -380,14 +572,21 @@ function bindHome() {
     var pending = dice.map(function (d, i) { return i; }).filter(function (i) { return !stDice[i]; });
     pending.forEach(function (i, k) { setTimeout(function () { rollDie(i); }, k * 180); });
   });
-  var send = $("sendAction");
-  if (send) send.addEventListener("click", function () {
-    var txt = ($("actionText").value || "").trim(); if (!txt) return;
+  bindComposer(COMPOSER_MAIN);
+  bindComposer(COMPOSER_TOP);
+}
+/* Liaison d'un formulaire d'action (bloc d'origine ou copie du haut).
+   Après l'envoi, loadActions() + render() ré-affichent les deux blocs. */
+function bindComposer(ids) {
+  var send = $(ids.send);
+  if (!send) return;
+  send.addEventListener("click", function () {
+    var txt = ($(ids.text).value || "").trim(); if (!txt) return;
     send.disabled = true; send.textContent = X("sending");
     sbPost("player_actions", { turn_number: DB.state.turn, trainer_slug: me, text: txt, status: "received" })
       .then(function () { return loadActions(); })
       .then(function () { render(); })
-      .catch(function () { send.disabled = false; send.textContent = T("send"); $("sendMsg").innerHTML = '<div class="sent-ok" style="background:#fdecec;border-color:var(--red);color:#7f1d1d">' + esc(X("sendFail")) + "</div>"; });
+      .catch(function () { send.disabled = false; send.textContent = T("send"); $(ids.msg).innerHTML = '<div class="sent-ok" style="background:#fdecec;border-color:var(--red);color:#7f1d1d">' + esc(X("sendFail")) + "</div>"; });
   });
 }
 
@@ -398,7 +597,10 @@ function moveJp(nameFr) {
   if (!MOVE_JP_INDEX) {
     MOVE_JP_INDEX = {};
     Object.keys(window.LEARNSETS || {}).forEach(function (sp) {
-      window.LEARNSETS[sp].forEach(function (a) { if (a.jp) MOVE_JP_INDEX[a.name] = a.jp; });
+      window.LEARNSETS[sp].forEach(function (a) { var f = spFr(a.name); if (f && a.name && a.name.jp) MOVE_JP_INDEX[f] = a.name.jp; });
+    });
+    Object.keys(LS_AUTO).forEach(function (sp) {
+      LS_AUTO[sp].forEach(function (a) { var f = spFr(a.name); if (f && a.name && a.name.jp) MOVE_JP_INDEX[f] = a.name.jp; });
     });
     Object.keys(window.MOVE_DB || {}).forEach(function (n) { /* noms seulement */ });
   }
@@ -407,16 +609,127 @@ function moveJp(nameFr) {
 function typeName(tFr) { return lang === "jp" ? ((window.TYPE_JP || {})[tFr] || tFr) : tFr; }
 function typeColor(tFr) { return (window.TYPE_COLORS || {})[tFr] || "#888"; }
 function typeInk(tFr) { return (window.TYPE_TEXT_DARK || {})[tFr] ? "#23255e" : "#fff"; }
+function normName(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, ""); }
 function knownMoves(p) {
-  var ls = (window.LEARNSETS || {})[spFr(p.species)] || [];
+  var ls = (window.LEARNSETS || {})[spFr(p.species)] || LS_AUTO[spFr(p.species)] || [];
   var out = [], seen = {};
-  ls.forEach(function (a) { if (a.n <= p.level) { out.push({ nameFr: a.name, nameJp: a.jp, type: a.type, lvl: a.n }); seen[a.name] = 1; } });
+  ls.forEach(function (a) { if (a.n <= p.level) { var f = spFr(a.name); out.push({ nameFr: f, nameJp: (a.name && a.name.jp) || null, type: a.type, lvl: a.n }); seen[normName(f)] = 1; } });
   (p.moves || []).forEach(function (m) {
     var nFr = spFr(m.name), nJp = (m.name && typeof m.name === "object") ? m.name.jp : null;
-    if (!seen[nFr]) { out.push({ nameFr: nFr, nameJp: nJp, type: m.type, lvl: null }); seen[nFr] = 1; }
+    if (!seen[normName(nFr)]) { out.push({ nameFr: nFr, nameJp: nJp, type: m.type, lvl: null }); seen[normName(nFr)] = 1; }
   });
   return out;
 }
+/* Liste complète des attaques par montée de niveau : accessibles en évidence
+   (avec compteur), futures grisées avec leur niveau d'apprentissage. */
+function learnsetSection(p, ls) {
+  if (!ls.length) return "";
+  var known = ls.filter(function (a) { return a.n <= p.level; }).length;
+  var rows = ls.map(function (a) {
+    var ok = a.n <= p.level;
+    var nm = lang === "jp" ? ((a.name && a.name.jp) || spFr(a.name)) : spFr(a.name);
+    var inner = '<span class="ls-lvl">' + esc(T("learnAtLbl")) + " " + a.n + "</span>" +
+      '<span class="ls-name">' + esc(nm) + "</span>" +
+      '<span class="ls-type" style="background:' + typeColor(a.type) + ";color:" + typeInk(a.type) + '">' + esc(typeName(a.type)) + "</span>" +
+      (ok ? '<span class="ls-ok">✓</span>' : "");
+    return ok
+      ? '<button type="button" class="ls-row" data-move="' + esc(spFr(a.name)) + '" data-type="' + esc(a.type) + '">' + inner + "</button>"
+      : '<div class="ls-row locked">' + inner + "</div>";
+  }).join("");
+  return '<h3 style="margin-top:14px">' + esc(X("learnsetTitle")) + ' <span class="ls-count">' + known + " / " + ls.length + " " + esc(T("knownLbl")) + "</span></h3>" +
+    '<div class="ls-list">' + rows + "</div>";
+}
+/* ============ Learnsets automatiques (espèces absentes des données locales) ============
+   Règle de la partie : tout doit être automatique — capture, niveau gagné, nouvelle
+   attaque apprise — sans que personne ait à demander. À l'ouverture de la fiche d'un
+   Pokémon dont l'espèce n'a pas de learnset local validé, l'appli résout elle-même
+   le learnset officiel depuis PokeAPI : attaques par montée de niveau du groupe de
+   versions le plus récent disponible pour l'espèce (priorité à Écarlate/Violet),
+   noms officiels FR + JP, types convertis vers les noms FR de l'appli. Le résultat
+   est injecté dans LS_AUTO (même format que learnsets.js, donc knownMoves(),
+   l'index JP et la section « Attaques par montée de niveau » s'en servent sans autre
+   changement) et mis en cache dans localStorage, par n° de dex.
+   Les espèces locales validées gardent TOUJOURS la priorité (choix de partie). */
+var LS_AUTO = {};
+var LS_AUTO_STATE = {};   /* espèce FR -> "loading" | "done" | "error" */
+var LS_CACHE_KEY = "jdr-ryo-learnsets-v1";
+var VG_PRIORITY = ["scarlet-violet", "legends-arceus", "brilliant-diamond-shining-pearl", "sword-shield", "lets-go-pikachu-lets-go-eevee", "ultra-sun-ultra-moon", "sun-moon", "omega-ruby-alpha-sapphire", "x-y", "black-2-white-2", "black-white", "heartgold-soulsilver", "platinum", "diamond-pearl", "firered-leafgreen", "emerald", "ruby-sapphire", "crystal", "gold-silver", "yellow", "red-blue"];
+var TYPE_EN_FR = { normal: "Normal", fighting: "Combat", flying: "Vol", poison: "Poison", ground: "Sol", rock: "Roche", bug: "Insecte", ghost: "Spectre", steel: "Acier", fire: "Feu", water: "Eau", grass: "Plante", electric: "Électrik", psychic: "Psy", ice: "Glace", dragon: "Dragon", dark: "Ténèbres", fairy: "Fée" };
+function lsCacheRead() { try { return JSON.parse(localStorage.getItem(LS_CACHE_KEY) || "{}"); } catch (e) { return {}; } }
+function lsCacheWrite(dex, ls) { try { var c = lsCacheRead(); c[dex] = ls; localStorage.setItem(LS_CACHE_KEY, JSON.stringify(c)); } catch (e) {} }
+function fetchJson(url) { return fetch(url).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }); }
+function pokeName(names, langs) {
+  for (var i = 0; i < langs.length; i++) {
+    var hit = (names || []).filter(function (n) { return n.language && n.language.name === langs[i]; })[0];
+    if (hit) return hit.name;
+  }
+  return null;
+}
+function resolveLearnset(dex) {
+  return fetchJson("https://pokeapi.co/api/v2/pokemon/" + dex).then(function (pk) {
+    var chosen = null;
+    VG_PRIORITY.forEach(function (vg) {
+      if (chosen) return;
+      var has = (pk.moves || []).some(function (m) {
+        return (m.version_group_details || []).some(function (v) { return v.version_group && v.version_group.name === vg && v.move_learn_method && v.move_learn_method.name === "level-up"; });
+      });
+      if (has) chosen = vg;
+    });
+    if (!chosen) return [];
+    var byMove = {};
+    (pk.moves || []).forEach(function (m) {
+      (m.version_group_details || []).forEach(function (v) {
+        if (!v.version_group || v.version_group.name !== chosen || !v.move_learn_method || v.move_learn_method.name !== "level-up") return;
+        var parts = String(m.move.url || "").split("/").filter(Boolean);
+        var id = parseInt(parts[parts.length - 1], 10);
+        if (!id) return;
+        var lvl = Math.max(1, v.level_learned_at || 0);
+        if (!byMove[id] || lvl < byMove[id]) byMove[id] = lvl;
+      });
+    });
+    var entries = Object.keys(byMove).map(function (k) { return { id: parseInt(k, 10), n: byMove[k] }; })
+      .sort(function (a, b) { return a.n - b.n || a.id - b.id; });
+    return Promise.all(entries.map(function (e) {
+      return fetchJson("https://pokeapi.co/api/v2/move/" + e.id).then(function (mv) {
+        var fr = pokeName(mv.names, ["fr"]);
+        if (!fr) return null;
+        var jp = pokeName(mv.names, ["ja-Hrkt", "ja"]) || fr;
+        var tEn = mv.type && mv.type.name;
+        return { n: e.n, name: { fr: fr, jp: jp }, type: TYPE_EN_FR[tEn] || (tEn ? tEn.charAt(0).toUpperCase() + tEn.slice(1) : "Normal") };
+      });
+    })).then(function (list) { return list.filter(Boolean); });
+  });
+}
+function ensureLearnset(p) {
+  var spF = spFr(p.species), dex = p.dex;
+  if ((window.LEARNSETS || {})[spF] || !dex) return;               /* local validé : prioritaire, jamais écrasé */
+  if (LS_AUTO_STATE[spF] === "done" || LS_AUTO_STATE[spF] === "error" || LS_AUTO_STATE[spF] === "loading") return;
+  var cached = lsCacheRead()[dex];
+  if (cached) {
+    LS_AUTO[spF] = cached; LS_AUTO_STATE[spF] = "done"; MOVE_JP_INDEX = null;
+    if (sheetPokeId === p.id && $("sheet")) pokeSheet(p);
+    return;
+  }
+  LS_AUTO_STATE[spF] = "loading";
+  resolveLearnset(dex).then(function (ls) {
+    LS_AUTO[spF] = ls; LS_AUTO_STATE[spF] = "done"; MOVE_JP_INDEX = null;
+    lsCacheWrite(dex, ls);
+    if (sheetPokeId === p.id && $("sheet")) pokeSheet(p);
+  }).catch(function () {
+    LS_AUTO_STATE[spF] = "error";
+    if (sheetPokeId === p.id && $("sheet")) pokeSheet(p);
+  });
+}
+/* Section learnset de la fiche : locale si elle existe, résolue automatiquement
+   sinon ; pendant la résolution (ou hors ligne), un état discret à la place. */
+function learnsetBlock(p) {
+  var spF = spFr(p.species);
+  if ((window.LEARNSETS || {})[spF]) return learnsetSection(p, window.LEARNSETS[spF]);
+  if (LS_AUTO_STATE[spF] === "done") return learnsetSection(p, LS_AUTO[spF] || []);
+  var err = LS_AUTO_STATE[spF] === "error";
+  return '<h3 style="margin-top:14px">' + esc(X("learnsetTitle")) + '</h3><p class="muted small">' + esc(err ? X("lsOffline") : X("lsLoading")) + "</p>";
+}
+
 function moveDisplayName(m) { if (typeof m === "string") return lang === "jp" ? (moveJp(m) || m) : m; return lang === "jp" ? (m.nameJp || moveJp(m.nameFr) || m.nameFr) : m.nameFr; }
 function pokeCard(p) {
   var nick = pick(p.nickname) || spName(p.dex, p.species);
@@ -479,8 +792,10 @@ function openSheet(html) {
   d.addEventListener("click", function (e) { if (e.target === d) closeSheet(); });
   document.body.appendChild(d);
 }
-function closeSheet() { var s = $("sheet"); if (s) s.remove(); }
+var sheetPokeId = null;   /* id du Pokémon dont la fiche est ouverte (suivi pour la résolution auto) */
+function closeSheet() { sheetPokeId = null; var s = $("sheet"); if (s) s.remove(); }
 function moveSheet(nameFr, typeFr) {
+  sheetPokeId = null;   /* la fiche d'attaque remplace la fiche Pokémon : plus de ré-affichage auto */
   var db = (window.MOVE_DB || {})[nameFr];
   var nm = moveDisplayName(nameFr);
   var effOff = db ? (lang === "jp" ? db.e.jp : db.e.fr) : null;
@@ -509,7 +824,6 @@ function pokeSheet(p) {
   var sp = spName(p.dex, p.species);
   var locLbl = p.location === "equipe" ? T("inTeam") : (p.location === "depot" ? T("atDepot") : T("atPension"));
   var moves = knownMoves(p);
-  var ls = (window.LEARNSETS || {})[spFr(p.species)] || [];
   var note = pick(p.statusNote);
   var html = '<button type="button" class="btn blue" data-close="1">' + esc(T("backTeams")) + "</button>" +
     '<div class="sheet-head"><img src="' + spriteOf(p.dex) + '" alt=""><div><div class="sh-name">' + esc(nick) + '</div>' +
@@ -527,12 +841,10 @@ function pokeSheet(p) {
     moves.map(function (m) {
       return '<button type="button" class="move-pill" data-move="' + esc(m.nameFr) + '" data-type="' + esc(m.type) + '" style="background:' + typeColor(m.type) + ";color:" + typeInk(m.type) + '">' + esc(moveDisplayName(m)) + (m.lvl ? " <small>" + esc(T("learnAtLbl")) + " " + m.lvl + "</small>" : "") + "</button>";
     }).join("") + "</div>" +
-    '<details class="fold" style="margin-top:12px"><summary>' + esc(T("learnsetLbl")) + " — " + moves.length + "/" + ls.length + " " + esc(T("knownLbl")) + '</summary><div class="move-pills" style="margin-top:8px">' +
-    ls.map(function (a) {
-      var ok = a.n <= p.level;
-      return '<span class="move-pill' + (ok ? "" : " locked") + '" style="background:' + typeColor(a.type) + ";color:" + typeInk(a.type) + '">' + esc(lang === "jp" ? (a.jp || a.name) : a.name) + " <small>" + a.n + "</small></span>";
-    }).join("") + "</div></details>";
+    learnsetBlock(p);
   openSheet(html); bindSheet();
+  sheetPokeId = p.id;   /* après openSheet : son closeSheet() interne remet le suivi à zéro */
+  ensureLearnset(p);   /* espèce sans learnset local : résolution automatique (no-op sinon) */
 }
 function bindSheet() {
   var box = $("sheet"); if (!box) return;
@@ -625,14 +937,20 @@ function bindChars() {
 var bagView = null;
 function viewBag() {
   var slug = bagView || me;
-  var h = "<h1>" + esc(T("bagTitle")) + '</h1><p class="intro">' + esc(T("bagIntro")) + '</p><div class="player-switch">' +
-    ["julien", "ryo"].map(function (s) { return '<button type="button" data-bagview="' + s + '" class="' + (slug === s ? "on" : "") + '">' + esc((T("bagOf") || "").replace("{name}", nameOf(s))) + "</button>"; }).join("") + "</div>";
+  var h = "<h1>" + esc(T("bagTitle")) + '</h1><p class="intro">' + esc(T("bagIntro")) + '</p><div class="bag-switch">' +
+    ["julien", "ryo"].map(function (s) {
+      var c = charOf(s) || {};
+      return '<button type="button" data-bagview="' + s + '" class="bag-btn' + (slug === s ? " on" : "") + '" aria-pressed="' + (slug === s) + '">' +
+        '<img class="bag-face" src="' + esc(c.img || "") + '" alt="">' +
+        '<span class="bag-lbl">' + esc((T("bagOf") || "").replace("{name}", nameOf(s))) + "</span></button>";
+    }).join("") + "</div>";
   var items = DB.items.filter(function (it) { return it.owner === slug && it.qty > 0; });
   h += '<section class="card"><span class="pill">' + esc(nameOf(slug)) + "</span>" +
     (items.length ? items.map(function (it) {
       var nm = it.name ? pick(it.name) : null;
-      return '<div class="kv-line"><span>' + esc(nm || "?") + (it.qty > 1 ? " <b>×" + it.qty + "</b>" : "") + '</span></div>' +
-        (it.note && pick(it.note) ? '<p class="small muted" style="margin:2px 0 8px">' + esc(pick(it.note)) + "</p>" : "");
+      return '<div class="item-row">' + itemIconHTML(it) + '<div class="item-body">' +
+        '<div class="item-name">' + esc(nm || "?") + (it.qty > 1 ? " <b>×" + it.qty + "</b>" : "") + "</div>" +
+        (it.note && pick(it.note) ? '<p class="small muted item-note">' + esc(pick(it.note)) + "</p>" : "") + "</div></div>";
     }).join("") : '<p class="muted">' + esc(X("noText")) + "</p>") + "</section>";
   return h;
 }
