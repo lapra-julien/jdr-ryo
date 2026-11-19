@@ -1545,17 +1545,26 @@ function viewDex() {
   for (var d = 1; d <= 151; d++) if (seen[d]) kantoSeen++;
   Object.keys(seen).forEach(function (k) { if (parseInt(k, 10) > 151) natSeen.push(parseInt(k, 10)); });
   natSeen.sort(function (a, b) { return a - b; });
-  /* À la une : rencontre la plus récente, sinon dernier Pokémon arrivé */
-  var featDex = null, bestTurn = -1;
-  DB.encounters.forEach(function (e) { var t = e.turn || 0; if (t > bestTurn) { bestTurn = t; featDex = e.dex; } });
-  if (!featDex && DB.pokemon.length) featDex = DB.pokemon[DB.pokemon.length - 1].dex;
+  /* À la une : rencontre la plus récente, sinon dernier Pokémon arrivé.
+     Le contexte affiché est TOUJOURS celui de l'entrée mise en avant :
+     note de cette rencontre-là, sinon note de statut de ce Pokémon.
+     (Ne jamais réintroduire de texte figé ici : il finirait rattaché
+     à une autre espèce dès que la « plus récente » change.) */
+  var featDex = null, featEnc = null, featPoke = null, bestTurn = -1;
+  DB.encounters.forEach(function (e) { var t = e.turn || 0; if (t > bestTurn) { bestTurn = t; featDex = e.dex; featEnc = e; } });
+  if (!featDex && DB.pokemon.length) { featPoke = DB.pokemon[DB.pokemon.length - 1]; featDex = featPoke.dex; }
   var h = "<h1>" + esc(T("dexTitle")) + '</h1><p class="intro">' + esc(T("dexSeen")) + "</p>";
   h += '<section class="card neutral"><span class="pill">' + esc(T("totalSeen")) + '</span><div class="dex-count">' + kantoSeen + " / 151 — " + esc(T("kantoLbl")) + '</div>' +
     '<div class="dex-progress"><i style="width:' + Math.round(100 * kantoSeen / 151) + '%"></i></div></section>';
   if (featDex) {
     var fn = speciesName(featDex, "");
+    var ctxNote = featEnc ? (pick(featEnc.note) || "") : "";
+    if (!ctxNote) {
+      var fp = featPoke || DB.pokemon.filter(function (p) { return p.dex === featDex; })[0];
+      if (fp) ctxNote = pick(fp.statusNote) || "";
+    }
     h += '<section class="card"><span class="pill">' + esc(T("dexFeat")) + '</span><div class="sheet-head"><img src="' + dexImg(featDex) + '" alt="" style="image-rendering:auto">' +
-      '<div><div class="sh-name">N° ' + featDex + " — " + esc(fn || "") + '</div><div class="muted small">' + esc(T("dexFeatCtx")) + "<br>" + esc(provLabel(featDex, seen)) + "</div></div></div></section>";
+      '<div><div class="sh-name">N° ' + featDex + " — " + esc(fn || "") + '</div><div class="muted small">' + (ctxNote ? esc(ctxNote) + "<br>" : "") + esc(provLabel(featDex, seen)) + "</div></div></div></section>";
   }
   var cells = "";
   for (var n = 1; n <= 151; n++) {
