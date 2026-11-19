@@ -76,25 +76,114 @@ function dexImg(dex) { return dex ? "https://raw.githubusercontent.com/PokeAPI/s
 /* Sprites officiels des objets (dépôt PokeAPI/sprites, dossier items), résolus
    depuis le nom FR stocké en base — jamais depuis le nom affiché : le côté JP
    montre donc les mêmes images. Clés = normName(nom FR). Valeur = slug PokeAPI.
-   Absent de la table = pas de sprite officiel (objet de campagne, ou objet sans
-   icône d'item dans les jeux, ex. le Pokédex) → repli sur le glyphe stocké. */
+   Table vérifiée slug par slug (HTTP 200) le 2026-11-19 — voir
+   work/items-check/ et la procédure d'extension dans SYNC-CHECK.md.
+   Les CT/CS ne sont PAS dans la table : elles sont résolues par le type de
+   l'attaque (MOVE_DB) vers le disque tm-<type> correspondant, comme la CT19
+   Méga-Sangsue -> tm-grass. Absent de la table et pas une CT = pas de sprite
+   officiel (objet de campagne, ou objet sans icône dans les jeux, ex. le
+   Pokédex) -> glyphe délibéré (ITEM_GLYPHS) ou glyphe stocké en base. */
 var ITEM_SPRITES = {
-  "potion": "potion", "pokeball": "poke-ball", "superball": "great-ball",
-  "baieoran": "oran-berry", "vieillecanne": "old-rod", "perle": "pearl",
-  "pierrefeu": "fire-stone", "pierreplante": "leaf-stone",
-  "ufdepokemon": "egg", "ct19megasangsue": "tm-grass"
+  "pokeball": "poke-ball", "superball": "great-ball", "hyperball": "ultra-ball",
+  "masterball": "master-ball", "safariball": "safari-ball", "parcball": "park-ball",
+  "luxeball": "luxury-ball", "filetball": "net-ball", "plongeeball": "dive-ball",
+  "bisball": "repeat-ball", "chronoball": "timer-ball", "faibloball": "nest-ball",
+  "rapideball": "quick-ball", "sombreball": "dusk-ball", "soinball": "heal-ball",
+  "memoireball": "cherish-ball", "honorball": "premier-ball", "niveauball": "level-ball",
+  "appatball": "lure-ball", "luneball": "moon-ball", "copainball": "friend-ball",
+  "amourball": "love-ball", "masseball": "heavy-ball", "vitesseball": "fast-ball",
+  "competball": "sport-ball", "reveball": "dream-ball", "potion": "potion",
+  "superpotion": "super-potion", "hyperpotion": "hyper-potion", "potionmax": "max-potion",
+  "guerison": "full-restore", "rappel": "revive", "rappelmax": "max-revive",
+  "antidote": "antidote", "antipara": "paralyze-heal", "antibrule": "burn-heal",
+  "antigel": "ice-heal", "reveil": "awakening", "totalsoin": "full-heal",
+  "eaufraiche": "fresh-water", "sodacool": "soda-pop", "limonade": "lemonade",
+  "laitmeumeu": "moomoo-milk", "jusdebaie": "berry-juice", "herberappel": "revival-herb",
+  "poudresoin": "heal-powder", "racineenergie": "energy-root", "poudreenergie": "energy-powder",
+  "bonbonrage": "rage-candy-bar", "huile": "ether", "huilemax": "max-ether",
+  "elixir": "elixir", "maxelixir": "max-elixir", "ppplus": "pp-up",
+  "ppmax": "pp-max", "superbonbon": "rare-candy", "cordesortie": "escape-rope",
+  "repousse": "repel", "superrepousse": "super-repel", "repoussemax": "max-repel",
+  "pokepoupee": "poke-doll", "pierrefeu": "fire-stone", "pierreeau": "water-stone",
+  "pierrefoudre": "thunder-stone", "pierreplante": "leaf-stone", "pierrelune": "moon-stone",
+  "pierresoleil": "sun-stone", "pierreeclat": "shiny-stone", "pierreaube": "dawn-stone",
+  "pierrenuit": "dusk-stone", "pierreglace": "ice-stone", "pierreovale": "oval-stone",
+  "baieoran": "oran-berry", "baiesitrus": "sitrus-berry", "baieceriz": "cheri-berry",
+  "baiemaron": "chesto-berry", "baiepecha": "pecha-berry", "baiefraive": "rawst-berry",
+  "baieprine": "aspear-berry", "baiemepo": "leppa-berry", "baienanab": "nanab-berry",
+  "baieframby": "razz-berry", "baiepinia": "pinap-berry", "baiepomroz": "pomeg-berry",
+  "baiealgue": "kelpsy-berry", "baiequalot": "qualot-berry", "baiehondew": "hondew-berry",
+  "baietamato": "tamato-berry", "perle": "pearl", "grosseperle": "big-pearl",
+  "chainedeperles": "pearl-string", "pepite": "nugget", "grossepepite": "big-nugget",
+  "poussieredetoile": "stardust", "morceaudetoile": "star-piece", "morceaudecomete": "comet-shard",
+  "minichampignon": "tiny-mushroom", "groschampignon": "big-mushroom", "vieillecanne": "old-rod",
+  "canne": "good-rod", "megacanne": "super-rod", "longuevue": "silph-scope",
+  "pokeflute": "poke-flute", "dentenor": "gold-teeth", "clesecrete": "secret-key",
+  "vieilambre": "old-amber", "fossiledome": "dome-fossil", "fossilenautile": "helix-fossil",
+  "bicyclette": "bicycle", "chercheobjet": "dowsing-machine", "restes": "leftovers",
+  "cuilleretordue": "twisted-spoon", "lunettesnoires": "black-glasses", "ceinturenoire": "black-belt",
+  "aimant": "magnet", "eaumystique": "mystic-water", "charbon": "charcoal",
+  "grainemiracle": "miracle-seed", "glaceeternelle": "never-melt-ice", "runesort": "spell-tag",
+  "becpointu": "sharp-beak", "poudreargentee": "silver-powder", "piecerune": "amulet-coin",
+  "rocheroyale": "kings-rock", "crocdragon": "dragon-fang", "ecailledragon": "dragon-scale",
+  "peaumetal": "metal-coat", "ameliorator": "up-grade", "cddouteux": "dubious-disc",
+  "electriseur": "electirizer", "magmariseur": "magmarizer", "tissufauche": "reaper-cloth",
+  "protection": "protector", "protecteur": "protector", "sachet": "sachet",
+  "chantilly": "whipped-dream", "lentillescope": "scope-lens", "lentillelarge": "wide-lens",
+  "lentillezoom": "zoom-lens", "bandeauchoix": "choice-band", "lunetteschoix": "choice-specs",
+  "mouchoirchoix": "choice-scarf", "echarpechoix": "choice-scarf", "orbevie": "life-orb",
+  "orbeflamme": "flame-orb", "orbetoxique": "toxic-orb", "bandeaumuscle": "muscle-band",
+  "lunettessages": "wise-glasses", "ceinturepro": "expert-belt", "grelotzen": "soothe-bell",
+  "pierredure": "hard-stone", "sabledoux": "soft-sand", "herbeblanche": "white-herb",
+  "herbemental": "mental-herb", "grosseracine": "big-root", "casquebrut": "rocky-helmet",
+  "ballon": "air-balloon", "carterouge": "red-card", "boutonfuite": "eject-button",
+  "vesteassaut": "assault-vest", "poudreclaire": "bright-powder", "bandeaufocus": "focus-band",
+  "ceintureforce": "focus-sash", "metronome": "metronome", "ufchance": "lucky-egg",
+  "multiexp": "exp-share", "proteine": "protein", "fer": "iron",
+  "calcium": "calcium", "zinc": "zinc", "carbone": "carbos",
+  "pvplus": "hp-up", "miel": "honey", "ufdepokemon": "egg",
+  "florizarrite": "venusaurite", "tortankite": "blastoisinite", "dracaufitex": "charizardite-x",
+  "dracaufitey": "charizardite-y", "alakasite": "alakazite", "ectoplasmite": "gengarite",
+  "leviatorite": "gyaradosite", "mewtwoitex": "mewtwonite-x", "mewtwoitey": "mewtwonite-y",
+  "pteraite": "aerodactylite", "kangourexite": "kangaskhanite", "scarabruteite": "pinsirite"
 };
+var TM_TYPE_EN = { "Normal": "normal", "Combat": "fighting", "Vol": "flying", "Poison": "poison", "Sol": "ground", "Roche": "rock", "Insecte": "bug", "Spectre": "ghost", "Acier": "steel", "Feu": "fire", "Eau": "water", "Plante": "grass", "Électrik": "electric", "Psy": "psychic", "Glace": "ice", "Dragon": "dragon", "Ténèbres": "dark", "Fée": "fairy" };
+/* Glyphe choisis délibérément pour les objets sans sprite officiel
+   (liste tenue à jour dans SYNC-CHECK.md, annexe). */
+var ITEM_GLYPHS = {
+  "pokedex": "▤", "nourrituredevoyage": "▦", "ufdepokemon": "◉"
+};
+function itemGlyphOf(frName) {
+  if (!frName) return null;
+  var key = normName(frName);
+  if (ITEM_GLYPHS[key]) return ITEM_GLYPHS[key];
+  if (key.indexOf("dossier") === 0 || key.indexOf("devis") === 0) return "▣";
+  if (key.indexOf("lettre") === 0) return "✉";
+  if (key.indexOf("carnet") === 0) return "✎";
+  return null;
+}
 function itemSpriteOf(frName) {
   if (!frName) return null;
   var key = normName(frName), slug = ITEM_SPRITES[key];
+  if (!slug) {
+    var m = /^(?:CT|CS)\s*\d+\s+(.+)$/i.exec(String(frName).trim());
+    if (m && window.MOVE_DB) {
+      var mv = window.MOVE_DB[String(m[1]).trim()];
+      var en = mv && TM_TYPE_EN[mv.t];
+      if (en) slug = "tm-" + en;
+    }
+  }
   if (!slug && key.indexOf("ball") >= 0) slug = key.indexOf("super") >= 0 ? "great-ball" : "poke-ball";
   return slug ? "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/" + slug + ".png" : null;
 }
-/* Pastille d'objet : le sprite officiel couvre le glyphe stocké ; si le sprite
-   est absent ou échoue (onerror), le glyphe reste visible — jamais d'image cassée. */
+/* Pastille d'objet : le sprite officiel couvre le glyphe ; si le sprite est
+   absent ou échoue (onerror), le glyphe reste visible — jamais d'image cassée.
+   Le glyphe vient d'ITEM_GLYPHS (objets sans sprite officiel) ou, à défaut,
+   de l'icône stockée en base. */
 function itemIconHTML(it) {
-  var src = itemSpriteOf(spFr(it.name));
-  return '<span class="item-ic">' + esc(it.icon || "•") +
+  var fr = spFr(it.name);
+  var src = itemSpriteOf(fr);
+  return '<span class="item-ic">' + esc(itemGlyphOf(fr) || it.icon || "•") +
     (src ? '<img class="item-img" src="' + src + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : "") + "</span>";
 }
 
@@ -986,7 +1075,7 @@ function allChars() {
     list.push({ key: "c:" + slug, name: c.name, nameJp: c.nameJp, img: c.img, group: c.group, role: c.role, status: c.status, first: c.first, facts: c.facts, appearance: c.appearance });
   });
   DB.npcs.forEach(function (n, i) {
-    list.push({ key: "n:" + i, name: n.name, nameJp: n.nameJp, dex: n.dex, group: n.group, role: n.role, status: n.status, first: n.first, facts: n.facts, note: n.note });
+    list.push({ key: "n:" + i, name: n.name, nameJp: n.nameJp, img: n.img, dex: n.dex, group: n.group, role: n.role, status: n.status, first: n.first, facts: n.facts, note: n.note });
   });
   return list;
 }
@@ -1002,10 +1091,13 @@ function charItem(c, open) {
   var fi = pick(c.first); if (fi) body += "<p><b>" + esc(T("firstMeetLbl")) + "</b><br>" + esc(fi) + "</p>";
   var fa = pick(c.facts); if (fa) body += "<p><b>" + esc(T("factsLbl")) + "</b><br>" + esc(fa) + "</p>";
   var no = c.note ? pick(c.note) : null; if (no) body += "<p>" + esc(no) + "</p>";
-  /* Pastille de statut dorée visible sur la fiche FERMÉE, à côté du rôle (démo). */
+  /* Pastille de statut dorée visible sur la fiche FERMÉE, à côté du rôle (démo).
+     À droite de l'en-tête : affordance de déroulement (micro-texte + chevron
+     qui pivote à l'ouverture) — sans elle, rien ne disait que la fiche se déplie. */
   return '<details class="char-item" data-charname="' + esc((c.name + " " + (c.nameJp || "")).toLowerCase()) + '"' + (open ? " open" : "") + "><summary>" + face +
     '<span class="ci-main"><span class="ci-name">' + esc(nm) + '</span><br><span class="ci-role">' + esc(pick(c.role) || "") + "</span>" +
-    (st ? '<br><span class="pill gold ci-status">' + esc(st) + "</span>" : "") + "</span></summary>" +
+    (st ? '<br><span class="pill gold ci-status">' + esc(st) + "</span>" : "") + "</span>" +
+    '<span class="ci-expand"><span class="ci-expand-txt">' + esc(T("expandSheet")) + '</span><span class="ci-chev" aria-hidden="true">▾</span></span></summary>' +
     '<div class="ci-body">' + body + "</div></details>";
 }
 function viewChars() {
