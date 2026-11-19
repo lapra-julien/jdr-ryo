@@ -644,15 +644,18 @@ function saveDiceState(turn, st) {
 }
 /* ============ Statut de résolution du MJ, en temps réel ============
    La carte « Le MJ au travail » suit le tour EN COURS (state.turn), toujours :
-   elle ne montre jamais les étapes d'un tour précédent. Quatre situations :
-   - « collecting » : les deux actions du tour ne sont pas encore là —
-     l'étape 1 est l'étape en cours et une note dit qui a déjà envoyé la sienne ;
-   - « waiting » : les deux actions sont reçues mais le MJ n'a pas encore
-     publié de statut pour ce tour — étape 1 terminée, note d'attente ;
-   - « live » / « done » : le MJ a publié game_state.data.mjStatus { turn,
-     step, updatedAt } pour CE tour (step = étape en cours, base 1, de 1 à 6) —
-     étapes terminées ✓, en cours en évidence (pulsation douce), à venir
-     grisées ; à l'étape 6 (« done »), tout est coché et le polling s'arrête.
+   elle ne montre jamais les étapes d'un tour précédent. Depuis le 2026-11-20
+   (proposition C de Julien), la carte tient en UNE phrase, avec un point de
+   couleur et la durée de l'attente ou du travail en cours :
+   - « collecting » (orange) : les deux actions du tour ne sont pas encore
+     là — la phrase dit précisément laquelle on attend ;
+   - « waiting » (jaune) : les deux actions sont reçues, on attend le MJ —
+     durée depuis la réception de la dernière action ;
+   - « live » (vert, point pulsant) : le MJ a publié game_state.data.mjStatus
+     { turn, step, updatedAt } pour CE tour — la phrase dit ce qu'il fait
+     (étape step, base 1, de 1 à 6) et depuis quand cette étape a commencé ;
+   - « done » (vert) : étape 6 atteinte pour ce tour — phrase de fin,
+     le polling s'arrête.
    Un mjStatus d'un tour précédent (mjStatus.turn < state.turn) est PÉRIMÉ :
    il est ignoré et la carte retombe sur l'état dérivé du tour en cours —
    c'est le bug corrigé le 2026-11-20 (la carte restait figée, tout coché,
@@ -661,13 +664,13 @@ function saveDiceState(turn, st) {
    les actions toutes les ~10 s et met la carte à jour sans rechargement ;
    si le tour change (résolution publiée), rechargement complet pour faire
    apparaître la résolution en haut de l'accueil. */
-var MJ_STEPS = {
-  fr: ["Actions reçues", "Vérification de la partie", "Lecture de vos actions", "Résolution du tour", "Écriture du résultat", "Terminé — nouveau tour ouvert"],
-  jp: ["アクション受信済み", "ゲームの状態を確認中", "アクションを読み取り中", "ターンを解決中", "結果を書き込み中", "完了 — 次のターンが開きました"]
+var MJ_LIVE_PHRASES = {
+  fr: ["", "il a reçu vos actions", "il vérifie la partie", "il lit vos actions", "il résout le tour", "il écrit le résultat"],
+  jp: ["", "アクションを受け取りました", "ゲームの状態を確認しています", "アクションを読んでいます", "ターンを解決しています", "結果を書き込んでいます"]
 };
-var MJ_NOTE_WAITING = {
-  fr: "Vos deux actions sont reçues — en attente du MJ. La carte se mettra à jour toute seule dès qu'il s'y met.",
-  jp: "2人のアクションがそろいました — GMの対応待ちです。始まると自動で更新されます。"
+var MJ_NAMES = {
+  fr: { julien: "Julien", ryo: "Ryo" },
+  jp: { julien: "ジュリアン", ryo: "リョウ" }
 };
 function mjStatusOf() {
   var s = DB && DB.state ? DB.state.mjStatus : null;
@@ -680,59 +683,90 @@ function mjActionsGot() {
   });
   return got;
 }
-/* Modèle d'affichage de la carte pour le tour en cours : voir l'en-tête. */
+function mjTimeOf(v) { var t = v ? Date.parse(v) : NaN; return isFinite(t) ? t : null; }
+function mjActionTimes() {
+  var times = { julien: null, ryo: null };
+  ((DB && DB.actions) || []).forEach(function (a) {
+    if (a && Object.prototype.hasOwnProperty.call(times, a.trainer_slug)) {
+      var t = mjTimeOf(a.created_at);
+      if (t != null && (times[a.trainer_slug] == null || t > times[a.trainer_slug])) times[a.trainer_slug] = t;
+    }
+  });
+  return times;
+}
+/* Modèle d'affichage de la carte pour le tour en cours : voir l'en-tête.
+   « since » = début de l'attente ou de l'étape en cours (ms epoch), pour la
+   durée affichée : réception des actions (created_at), ou publication de
+   l'étape par le MJ (mjStatus.updatedAt), ou — tour qui vient de s'ouvrir
+   sans aucune action — la fin du tour précédent (mjStatus périmé, étape 6). */
 function mjModel() {
   if (!DB || !DB.state || DB.state.turn == null) return null;
   var cur = DB.state.turn;
   var s = mjStatusOf();
   if (s && typeof s.turn === "number" && s.turn >= cur) {
     var step = Math.max(1, Math.min(6, Math.round(s.step)));
-    return { turn: cur, mode: step >= 6 ? "done" : "live", step: step };
+    return { turn: cur, mode: step >= 6 ? "done" : "live", step: step, since: mjTimeOf(s.updatedAt) };
   }
   var got = mjActionsGot();
-  if (got.julien && got.ryo) return { turn: cur, mode: "waiting", step: 1, got: got };
-  return { turn: cur, mode: "collecting", step: 1, got: got };
+  var times = mjActionTimes();
+  if (got.julien && got.ryo) {
+    var last = Math.max(times.julien || 0, times.ryo || 0);
+    return { turn: cur, mode: "waiting", step: 1, got: got, since: last || null };
+  }
+  var since = null;
+  if (got.julien || got.ryo) since = got.julien ? times.julien : times.ryo;
+  else if (s && s.turn === cur - 1) since = mjTimeOf(s.updatedAt);
+  return { turn: cur, mode: "collecting", step: 1, got: got, since: since };
 }
-function mjStepState(m, n) {
-  if (m.mode === "done") return { cls: "done" + (n === 6 ? " final" : ""), ico: "✓" };
-  if (m.mode === "live") {
-    if (n < m.step) return { cls: "done", ico: "✓" };
-    if (n === m.step) return { cls: "current", ico: "●" };
-    return { cls: "todo", ico: String(n) };
+/* Durée écoulée depuis « since » (ms epoch), en suffixe de phrase :
+   « — à l'instant », « — depuis 5 min », « — depuis 1 h 05 » (JP : équivalents). */
+function mjDurSuffix(since) {
+  if (since == null) return "";
+  var sec = Math.floor((Date.now() - since) / 1000);
+  if (sec < 60) return lang === "jp" ? " — たった今" : " — à l'instant";
+  var dur;
+  if (sec < 3600) {
+    var mn = Math.floor(sec / 60);
+    dur = lang === "jp" ? mn + "分" : mn + " min";
+  } else if (sec < 86400) {
+    var h = Math.floor(sec / 3600), m2 = Math.floor((sec % 3600) / 60);
+    dur = lang === "jp" ? h + "時間" + (m2 ? ("0" + m2).slice(-2) + "分" : "") : h + " h " + ("0" + m2).slice(-2);
+  } else {
+    var d = Math.floor(sec / 86400);
+    dur = lang === "jp" ? d + "日" : d + " j";
   }
-  if (m.mode === "waiting") {
-    if (n === 1) return { cls: "done", ico: "✓" };
-    return { cls: "todo", ico: String(n) };
-  }
-  /* collecting : la réception des actions est l'étape en cours */
-  if (n === 1) return { cls: "current", ico: "●" };
-  return { cls: "todo", ico: String(n) };
+  return lang === "jp" ? " — " + dur + "前から" : " — depuis " + dur;
 }
-function mjNoteHTML(m) {
-  if (m.mode === "waiting") {
-    return '<div class="muted small" style="margin-top:6px">' + esc(MJ_NOTE_WAITING[lang] || MJ_NOTE_WAITING.fr) + "</div>";
-  }
+/* LA phrase de la carte : ce qui se passe, précisément, pour le tour en cours. */
+function mjSentence(m) {
+  var names = MJ_NAMES[lang] || MJ_NAMES.fr;
   if (m.mode === "collecting") {
-    var names = lang === "jp" ? { julien: "ジュリアン", ryo: "リョウ" } : { julien: "Julien", ryo: "Ryo" };
-    var parts = ["julien", "ryo"].map(function (slug) {
-      return names[slug] + (m.got[slug] ? " ✓" : (lang === "jp" ? "：未送信" : " : en attente"));
-    });
-    var prefix = lang === "jp" ? "このターンのアクション — " : "Actions du tour — ";
-    return '<div class="muted small" style="margin-top:6px">' + esc(prefix + parts.join(" · ")) + "</div>";
+    var missing = ["julien", "ryo"].filter(function (slug) { return !m.got[slug]; });
+    if (lang === "jp") {
+      return missing.length === 2 ? "ジュリアンとリョウのアクション待ちです" : names[missing[0]] + "のアクション待ちです";
+    }
+    return missing.length === 2 ? "En attente des actions de Julien et de Ryo" : "En attente de l'action de " + names[missing[0]];
   }
-  return "";
+  if (m.mode === "waiting") {
+    return lang === "jp" ? "アクション受信済み — GMの対応待ちです" : "Actions reçues — en attente du MJ";
+  }
+  if (m.mode === "live") {
+    var phrases = MJ_LIVE_PHRASES[lang] || MJ_LIVE_PHRASES.fr;
+    return (lang === "jp" ? "GMが作業中：" : "Le MJ travaille : ") + (phrases[m.step] || phrases[2]);
+  }
+  return lang === "jp" ? "解決完了 — 次のターンが開きました" : "Résolu — nouveau tour ouvert";
 }
 function mjCardInner(m) {
-  var labels = MJ_STEPS[lang] || MJ_STEPS.fr;
-  var rows = labels.map(function (lbl, i) {
-    var st = mjStepState(m, i + 1);
-    return '<div class="mj-step ' + st.cls + '"><span class="mj-ico">' + st.ico + '</span><span class="mj-lbl">' + esc(lbl) + "</span></div>";
-  }).join("");
-  /* Le numéro affiché est toujours le tour EN COURS (state.turn), jamais
-     celui d'un statut périmé d'un tour précédent. */
-  return '<span class="pill blue">' + esc(X("mjWorking")) + "</span>" +
-    '<span class="muted small">' + (lang === "jp" ? "第" + m.turn + "ターン" : "Tour n°" + m.turn) + "</span>" +
-    '<div class="mj-steps">' + rows + "</div>" + mjNoteHTML(m);
+  var color, pulse = "";
+  if (m.mode === "collecting") color = "#e67e22";
+  else if (m.mode === "waiting") color = "#d9a400";
+  else color = "#2e9e4f";
+  if (m.mode === "live") pulse = ";animation:mjPulse 1.6s ease-in-out infinite";
+  var turnLbl = lang === "jp" ? "第" + m.turn + "ターン" : "Tour n°" + m.turn;
+  return '<div class="mj-line" style="display:flex;gap:8px;align-items:baseline">' +
+    '<span aria-hidden="true" style="color:' + color + ';font-size:14px' + pulse + '">●</span>' +
+    '<span><strong>' + esc(turnLbl) + "</strong> — " + esc(mjSentence(m)) +
+    '<span class="muted small">' + esc(mjDurSuffix(m.mode === "done" ? null : m.since)) + "</span></span></div>";
 }
 function mjCardHTML() {
   var m = mjModel();
