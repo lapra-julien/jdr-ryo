@@ -882,8 +882,6 @@ function viewHome() {
      de l'appli. L'identité du joueur et l'état des dés, en localStorage,
      survivent au rechargement : on se retrouve sur l'accueil, connecté. */
   h += '<div style="text-align:right;margin:0 0 6px"><button type="button" class="linkbtn" id="refreshBtn">↻ ' + esc(lang === "jp" ? "更新" : "Rafraîchir") + "</button></div>";
-  /* Cloche des notifications push (activation par joueur, sur cet appareil) */
-  h += pushBarHTML();
   h += placeBlock();
   /* Copie du bloc du tour, juste sous l'illustration du lieu */
   h += turnTopHTML();
@@ -956,6 +954,9 @@ function viewHome() {
     '<img src="assets/deco-pokeball.png" alt="" style="width:26px;height:26px">' +
     '<img src="assets/deco-centre-pokemon.png" alt="" style="width:58px;height:58px">' +
     '<img src="assets/deco-superball.png" alt="" style="width:26px;height:26px"></div>';
+  /* Cloche des notifications push : tout en bas de l'accueil et discrète
+     (demande de Julien, 2026-11-20) — activation par joueur, sur cet appareil. */
+  h += pushBarHTML();
   return h;
 }
 /* Classe de tuile façon démo : couleur selon le verdict, dorée si réussite nette. */
