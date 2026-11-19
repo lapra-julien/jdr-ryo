@@ -8,7 +8,15 @@
 var CFG = window.APP_CONFIG || {};
 var REST = (CFG.SUPABASE_URL || "") + "/rest/v1";
 var HEADERS = { "apikey": CFG.SUPABASE_ANON_KEY || "", "Authorization": "Bearer " + (CFG.SUPABASE_ANON_KEY || "") };
-var LS_PLAYER = "jdr-ryo-player", LS_DICE = "jdr-ryo-dice";
+var LS_PLAYER = "jdr-ryo-player";
+/* État « dé révélé » des dés : STRICTEMENT local à l'appareil ET au joueur
+   qui regarde (clé v2 compartimentée par identité, voir diceState()).
+   L'ancienne clé « jdr-ryo-dice » (v1) stockait les révélations par tour
+   seul, sans identité : dans tout navigateur où l'appli est ouverte sous
+   les deux identités (le sélecteur d'entrée n'est qu'un choix de vue sur
+   la même origine), un dé lancé côté Ryo apparaissait révélé côté Julien.
+   La v1 est donc neutralisée au démarrage (supprimée, jamais relue). */
+var LS_DICE = "jdr-ryo-dice-v2", LS_DICE_LEGACY = "jdr-ryo-dice";
 
 var DB = null;            // données chargées
 var me = null;            // 'julien' | 'ryo'
@@ -367,11 +375,29 @@ function turnTopHTML() {
   h += "</section>";
   return h;
 }
+/* Révélations des dés du tour, pour LE joueur actuellement affiché (me)
+   sur CET appareil uniquement : { <tour>: { <joueur>: { <indexDé>: true } } }.
+   Aucune écriture vers Supabase : les valeurs des dés viennent des données
+   du MJ (partagées), mais le fait de les avoir lancées/révélées ne quitte
+   jamais l'appareil et ne concerne que l'identité affichée — lancer les
+   dés « en tant que Ryo » ne révèle donc rien « en tant que Julien »,
+   même dans le même navigateur, et inversement. */
 function diceState(turn) {
-  try { var all = JSON.parse(localStorage.getItem(LS_DICE) || "{}"); return all[turn] || {}; } catch (e) { return {}; }
+  try {
+    var all = JSON.parse(localStorage.getItem(LS_DICE) || "{}");
+    var per = all[turn] || {};
+    return (me && per[me]) ? per[me] : {};
+  } catch (e) { return {}; }
 }
 function saveDiceState(turn, st) {
-  try { var all = JSON.parse(localStorage.getItem(LS_DICE) || "{}"); all[turn] = st; localStorage.setItem(LS_DICE, JSON.stringify(all)); } catch (e) {}
+  if (!me) return;
+  try {
+    var all = JSON.parse(localStorage.getItem(LS_DICE) || "{}");
+    var per = all[turn] || {};
+    per[me] = st;
+    all[turn] = per;
+    localStorage.setItem(LS_DICE, JSON.stringify(all));
+  } catch (e) {}
 }
 /* ============ Statut de résolution du MJ, en temps réel ============
    Le MJ publie sa progression dans game_state.data.mjStatus :
@@ -1336,6 +1362,10 @@ document.addEventListener("visibilitychange", function () {
 });
 
 /* ================= Démarrage ================= */
+/* Neutralisation de l'ancien état de dés partagé entre identités (v1) :
+   toute révélation héritée de l'ancienne clé est effacée, pour qu'aucune
+   fuite déjà enregistrée ne subsiste chez l'un ou l'autre joueur. */
+try { localStorage.removeItem(LS_DICE_LEGACY); } catch (e) {}
 var saved = null;
 try { saved = localStorage.getItem(LS_PLAYER); } catch (e) {}
 if (saved === "julien" || saved === "ryo") setPlayer(saved);
