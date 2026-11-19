@@ -42,6 +42,22 @@ body{
   box-shadow:inset 0 0 0 3px #fff, 0 4px 0 rgba(0,0,0,.25);
   padding:12px 12px 96px; overflow-y:auto; position:relative;
 }
+/* ---------- Filigrane d'écran (restauré) ----------
+   Grande mascotte en arrière-plan fixe du contenu principal, non interactive :
+   Neko côté Julien, Kuma côté Ryo (le body porte data-player), Poké Ball sur
+   l'écran d'entrée / neutre. Les images d'origine (assets/wm-*.png) portent
+   DÉJÀ leur alpha de filigrane (~15 % dans le fichier) : ne surtout pas
+   rajouter d'opacity CSS par-dessus, le produit des deux rendait le filigrane
+   invisible (~2 %) — c'est la cause de sa « disparition ». */
+.dex-screen::before{
+  content:""; position:fixed; left:50%; top:55%; transform:translate(-50%,-50%);
+  width:min(74vw,340px); height:min(74vw,340px); z-index:0;
+  background:url("assets/wm-pokeball.png") center/contain no-repeat;
+  pointer-events:none;
+}
+body[data-player="julien"] .dex-screen::before{background-image:url("assets/wm-neko.png")}
+body[data-player="ryo"] .dex-screen::before{background-image:url("assets/wm-kuma.png")}
+.dex-screen > *{position:relative; z-index:1}
 /* ---------- Navigation basse flottante ---------- */
 .bottomnav{
   position:fixed; left:50%; transform:translateX(-50%); bottom:10px; z-index:40;
@@ -66,11 +82,12 @@ body{
 }
 .card::after{
   content:""; position:absolute; right:-12px; bottom:-16px; width:128px; height:128px;
-  background:center/contain no-repeat; opacity:.13; pointer-events:none;
+  background:center/contain no-repeat; pointer-events:none;
+  /* pas d'opacity ici : les wm-*.png portent déjà leur alpha de filigrane (~15 %) */
 }
 body[data-player="julien"] .card::after{background-image:url("assets/wm-neko.png")}
 body[data-player="ryo"] .card::after{background-image:url("assets/wm-kuma.png")}
-.card.neutral::after{background-image:url("assets/wm-pokeball.png");opacity:.10}
+.card.neutral::after{background-image:url("assets/wm-pokeball.png")}
 .card > *{position:relative; z-index:1}
 .card h2,.card h3{margin:0 0 8px}
 .pill{
@@ -122,47 +139,86 @@ body[data-player="ryo"] .card::after{background-image:url("assets/wm-kuma.png")}
 .place-img{width:100%; display:block; border:2.5px solid var(--ink); border-radius:var(--radius); box-shadow:0 3px 0 rgba(35,37,94,.85)}
 .place-split{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .place-cap{font-size:.78rem;font-weight:700;margin-top:5px;color:var(--ink2)}
-/* Dés — cube 3D qui roule au lancer, valeur finale sur la face avant */
-.die-cell{margin:0 0 10px}
-.die{
-  display:flex; align-items:center; gap:12px; width:100%; text-align:left; font:inherit; cursor:pointer;
-  background:#eaf2ff; border:2.5px solid var(--ink); border-radius:12px; padding:10px 12px; color:var(--ink);
+/* Dés — tuiles pixel façon démo : boîte épaisse aux bords nets, dégradé bleu de
+   l'écran Pokédex, motif Poké Ball dans le coin, fonte pixel DotGothic16.
+   Avant le lancer : « ? » jaune + mention d20. Pendant le lancer : la tuile
+   sautille (dieBounce) pendant que les valeurs défilent sur la face.
+   À la retombée : pop + étincelles, tuile colorée selon le verdict
+   (verte / jaune / rouge, dorée si réussite nette) et chiffre blanc. */
+.roll-grid{display:flex; flex-wrap:wrap; gap:18px 14px; justify-content:center; margin-top:14px}
+.roll-cell{width:132px; text-align:center}
+.roll-die{width:96px; height:96px; border:3px solid #0a1f4d; border-radius:12px; padding:0; cursor:pointer; position:relative;
+  background:linear-gradient(180deg,#4779c6 0%,#3568b8 55%,#173a75 100%);
+  box-shadow:inset 0 0 0 2px rgba(220,234,255,.9), inset 0 10px 0 rgba(255,255,255,.28), inset 0 -12px 0 rgba(10,31,77,.35), 0 5px 0 #0a1f4d, 0 12px 18px rgba(10,20,50,.35);
+  transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease}
+.roll-die:hover:not(:disabled),.roll-die:focus-visible{transform:translateY(-3px); border-color:#f8d038;
+  box-shadow:inset 0 0 0 2px rgba(220,234,255,.9), inset 0 10px 0 rgba(255,255,255,.28), inset 0 -12px 0 rgba(10,31,77,.35), 0 5px 0 #0a1f4d, 0 0 0 3px #f8d038, 0 12px 18px rgba(10,20,50,.35)}
+.roll-die:disabled{cursor:default}
+.roll-in{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; width:100%; height:100%; border-radius:9px; position:relative}
+/* petit motif Poké Ball dans le coin de la tuile */
+.roll-in::before{content:""; position:absolute; top:7px; right:7px; width:17px; height:17px; border-radius:50%; border:2px solid #0a1f4d;
+  background:
+    radial-gradient(circle at 50% 50%, #fff 0 2.5px, #0a1f4d 3px 4.5px, transparent 5px),
+    linear-gradient(180deg,#e3352b 0 44%, #0a1f4d 44% 56%, #fff 56% 100%)}
+.roll-face{font-family:"DotGothic16","Noto Sans JP",sans-serif; font-size:2.5rem; line-height:1; color:#f8d038; text-shadow:2px 2px 0 rgba(10,31,77,.7)}
+.roll-tag{font-family:"DotGothic16","Noto Sans JP",sans-serif; font-size:.68rem; letter-spacing:.14em; color:#c3d7f7}
+.roll-die.landed .roll-face{color:#fff}
+.roll-die.landed.ok{background:linear-gradient(180deg,#63c774,#2f9e44)}
+.roll-die.landed.mid{background:linear-gradient(180deg,#ffd94d,#e6a817)}
+.roll-die.landed.mid .roll-face{color:#4a3200; text-shadow:1px 1px 0 rgba(255,255,255,.4)}
+.roll-die.landed.mid .roll-tag{color:#6b4e00}
+.roll-die.landed.bad{background:linear-gradient(180deg,#f0665c,#c92a20)}
+/* réussite nette : la tuile devient dorée, façon critique */
+.roll-die.landed.crit{background:linear-gradient(180deg,#ffe98a,#f5b301); border-color:#fff3b0}
+.roll-die.landed.crit .roll-face{color:#5c3a00; text-shadow:1px 1px 0 rgba(255,255,255,.55)}
+.roll-die.landed.crit .roll-tag{color:#6b4e00}
+@keyframes dieBounce{0%{transform:translateY(0) rotate(0deg)}25%{transform:translateY(-13px) rotate(-5deg)}50%{transform:translateY(0) rotate(4deg)}72%{transform:translateY(-7px) rotate(-3deg)}100%{transform:translateY(0) rotate(0deg)}}
+.roll-die.rolling{animation:dieBounce .42s ease-in-out infinite}
+@keyframes dieLand{0%{transform:scale(1)}30%{transform:scale(1.18) translateY(-4px)}55%{transform:scale(.94)}75%{transform:scale(1.05)}100%{transform:scale(1)}}
+@keyframes dieGlow{0%{filter:brightness(1.85)}100%{filter:brightness(1)}}
+.roll-die.pop{animation:dieLand .5s ease, dieGlow .5s ease}
+/* étincelles au moment où le dé tombe sur son résultat */
+.roll-die.pop::after{content:""; position:absolute; inset:-16px; pointer-events:none;
+  background:
+    radial-gradient(circle at 12% 18%, #fff 0 2.5px, transparent 4px),
+    radial-gradient(circle at 86% 10%, #f8d038 0 2.5px, transparent 4px),
+    radial-gradient(circle at 92% 80%, #fff 0 2.5px, transparent 4px),
+    radial-gradient(circle at 6% 86%, #f8d038 0 2.5px, transparent 4px),
+    radial-gradient(circle at 50% 0%, #fff 0 2px, transparent 3.5px);
+  animation:sparkle .55s ease-out both}
+@keyframes sparkle{0%{opacity:0; transform:scale(.55)}35%{opacity:1}100%{opacity:0; transform:scale(1.3)}}
+.roll-label{margin-top:9px; font-size:.82rem; line-height:1.4}
+.roll-label .who{display:block; font-weight:900; font-size:.88rem}
+.roll-label .what{display:block; color:#43477c}
+.roll-label .outcome{display:inline-block; margin-top:4px; border-radius:6px; padding:1px 9px; font-size:.76rem; font-weight:800; border:2px solid #0a1f4d; background:#dceaff; color:#173a75}
+.roll-label .outcome.ok{background:#b9efc4; color:#14532d}
+.roll-label .outcome.mid{background:#ffe9a8; color:#6b4e00}
+.roll-label .outcome.bad{background:#ffb3ab; color:#7a130c}
+.roll-actions{display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; justify-content:center; margin-top:16px}
+@media (prefers-reduced-motion: reduce){
+  .roll-die.rolling,.roll-die.pop,.roll-die.pop::after{animation:none}
+  .roll-die{transition:none}
 }
-.die-scene{flex:0 0 auto; width:86px; height:86px; perspective:360px; display:flex; align-items:center; justify-content:center}
-.cube{position:relative; width:64px; height:64px; transform-style:preserve-3d; transform:rotateX(-13deg) rotateY(17deg)}
-.cface{
-  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  border:2.5px solid var(--yellow); border-radius:11px; color:#fff; font-weight:900;
-  background:linear-gradient(145deg,#4a90d9,#2a5ca8); backface-visibility:hidden;
-  text-shadow:0 1px 2px rgba(0,0,0,.5);
-}
-.cface .cnum{font-size:1.6rem; line-height:1}
-.cface .cq{font-size:1.15rem; opacity:.75}
-.cf-front{transform:rotateY(0deg) translateZ(32px); background:radial-gradient(circle at 35% 30%,#6db3f2,#2a5ca8 78%)}
-.cf-back{transform:rotateY(180deg) translateZ(32px); background:linear-gradient(145deg,#2a5ca8,#1d4076)}
-.cf-right{transform:rotateY(90deg) translateZ(32px); background:linear-gradient(145deg,#3a7bd5,#224e8c)}
-.cf-left{transform:rotateY(-90deg) translateZ(32px); background:linear-gradient(145deg,#3a7bd5,#224e8c)}
-.cf-top{transform:rotateX(90deg) translateZ(32px); background:linear-gradient(145deg,#5ea0e6,#2a5ca8)}
-.cf-bottom{transform:rotateX(-90deg) translateZ(32px); background:linear-gradient(145deg,#2456a6,#183a6e)}
-.die.rolling .cube{animation:cuberoll .88s cubic-bezier(.3,.55,.35,1) both}
-@keyframes cuberoll{
-  0%{transform:rotateX(-13deg) rotateY(17deg) rotateZ(0deg)}
-  30%{transform:rotateX(235deg) rotateY(150deg) rotateZ(55deg)}
-  55%{transform:rotateX(475deg) rotateY(395deg) rotateZ(-35deg)}
-  80%{transform:rotateX(640deg) rotateY(605deg) rotateZ(18deg)}
-  100%{transform:rotateX(707deg) rotateY(737deg) rotateZ(0deg)}
-}
-.die .die-who{font-weight:800; font-size:.86rem}
-.die .die-act{font-size:.8rem; color:#43477c}
-.die .die-verdict{font-size:.8rem; font-weight:800}
 .roll-one{
-  display:block; width:100%; margin-top:6px; padding:12px 10px; font:inherit; font-size:1.08rem; font-weight:900; letter-spacing:.03em;
+  display:block; width:100%; margin-top:8px; padding:10px 10px; font:inherit; font-size:1.02rem; font-weight:900; letter-spacing:.03em;
   background:var(--yellow); color:var(--ink); border:2.5px solid var(--ink); border-radius:12px;
   box-shadow:0 3px 0 var(--ink); cursor:pointer;
 }
 .roll-one:active{transform:translateY(2px); box-shadow:0 1px 0 var(--ink)}
 .roll-one:disabled{opacity:.55; cursor:default}
 .v-ok{color:var(--green)} .v-bad{color:var(--red)} .v-mid{color:var(--orange)}
+/* ---------- Statut de résolution du MJ (temps réel) ---------- */
+.mj-steps{margin-top:6px}
+.mj-step{display:flex; align-items:center; gap:10px; padding:5px 8px; border-radius:10px; font-size:.92rem}
+.mj-step .mj-ico{flex:0 0 auto; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.78rem; font-weight:900; border:2px solid var(--line); background:#fff; color:#8a8fb5}
+.mj-step.done{color:var(--ink)}
+.mj-step.done .mj-ico{background:var(--green); border-color:var(--green); color:#fff}
+.mj-step.done.final{font-weight:800}
+.mj-step.current{background:var(--cream); font-weight:800; color:var(--ink)}
+.mj-step.current .mj-ico{background:var(--yellow); border-color:var(--ink); color:var(--ink); animation:mjPulse 1.6s ease-in-out infinite}
+.mj-step.todo{color:#8a8fb5}
+@keyframes mjPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}
+@media (prefers-reduced-motion: reduce){ .mj-step.current .mj-ico{animation:none} }
 .locked-box{filter:blur(5px); user-select:none; pointer-events:none}
 .lock-note{text-align:center; font-weight:700; color:var(--ink2); background:var(--cream); border:2px dashed var(--ink); border-radius:12px; padding:8px; margin-bottom:10px}
 textarea.action-input{
@@ -172,6 +228,22 @@ textarea.action-input{
 .sent-ok{background:#e5f6e9; border:2px solid var(--green); color:#14532d; border-radius:10px; padding:8px 10px; font-weight:700; font-size:.88rem; margin-top:8px}
 .action-line{border-left:4px solid var(--yellow2); background:#fffbe9; padding:7px 10px; border-radius:0 10px 10px 0; margin:0 0 8px; font-size:.9rem}
 .action-line .al-who{font-weight:800}
+/* Copie du bloc du tour (sous l'illustration du lieu) : cartes joueurs façon annonces */
+.duel-cards{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:0 0 10px}
+.pcard{
+  background:#fff; border:2.5px solid var(--ink); border-radius:12px; padding:10px 8px 11px;
+  text-align:center; box-shadow:0 2px 0 rgba(35,37,94,.55);
+}
+.pcard-face{width:74px; height:74px; border-radius:50%; object-fit:cover; border:3px solid var(--ink); background:#eaf2ff}
+.pcard-name{font-weight:900; font-size:1.03rem; margin-top:4px; line-height:1.2}
+.pcard-status{
+  display:inline-block; margin-top:5px; font-size:.7rem; font-weight:800; line-height:1.25;
+  border:2px solid var(--ink); border-radius:999px; padding:2px 9px; background:#e9e9f2; color:var(--ink2);
+}
+.pcard-status.sent{background:#e5f6e9; border-color:var(--green); color:#14532d}
+.pcard-status.draft{background:var(--cream); border-color:var(--yellow2); color:#7a5200}
+.duel-line{border:2px solid var(--line); background:#fff; border-radius:10px; padding:8px 10px; margin:0 0 8px; font-size:.9rem; line-height:1.45}
+.duel-line .dl-who{font-weight:900; color:#b3242a}
 /* ---------- Équipes ---------- */
 .passports{display:flex; gap:10px; margin-bottom:12px}
 .passport-mini{
@@ -187,6 +259,26 @@ textarea.action-input{
   border:2.5px solid var(--ink); background:#e9e9f2; color:var(--ink);
 }
 .player-switch button.on{background:var(--yellow)}
+/* Bascule des sacs : portrait rond + nom complet, sélection franchement visible */
+.bag-switch{display:flex; gap:10px; margin:0 0 12px}
+.bag-btn{
+  flex:1; display:flex; align-items:center; gap:10px; font:inherit; font-weight:800; cursor:pointer; text-align:left;
+  padding:8px 10px; border-radius:14px; border:2.5px solid var(--ink); background:#e9e9f2; color:var(--ink);
+}
+.bag-btn .bag-face{width:44px; height:44px; flex:none; border-radius:50%; object-fit:cover; border:2.5px solid var(--ink); background:#eaf2ff}
+.bag-btn.on{background:var(--yellow); box-shadow:0 3px 0 rgba(35,37,94,.85)}
+/* Lignes d'inventaire : sprite officiel à gauche du nom, glyphe stocké en repli */
+.item-row{display:flex; gap:10px; align-items:flex-start; padding:7px 0; border-bottom:1px dashed var(--line)}
+.item-row:last-child{border-bottom:none}
+.item-ic{
+  position:relative; width:42px; height:42px; flex:none; overflow:hidden;
+  display:inline-flex; align-items:center; justify-content:center;
+  background:#eef1fa; border:2px solid var(--line); border-radius:10px; font-size:1.05rem; color:#5a5e8f;
+}
+.item-img{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; image-rendering:pixelated; background:#eef1fa}
+.item-body{flex:1; min-width:0; padding-top:2px}
+.item-name{font-size:.92rem; font-weight:600}
+.item-note{margin:2px 0 0}
 .team-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px}
 .poke-card{
   background:#fff; border:2.5px solid var(--ink); border-radius:var(--radius); padding:9px; cursor:pointer;
@@ -232,6 +324,15 @@ table.kv th{background:var(--cream); width:38%; color:var(--ink2)}
 }
 .move-pill small{font-weight:600; opacity:.9}
 .move-pill.locked{opacity:.45; filter:grayscale(.4)}
+.ls-count{font-size:.78rem; font-weight:800; color:var(--ink2); background:var(--cream); border:1.5px solid var(--line); border-radius:999px; padding:2px 8px; white-space:nowrap}
+.ls-list{display:flex; flex-direction:column; gap:5px; margin-top:8px}
+.ls-row{display:flex; align-items:center; gap:8px; width:100%; text-align:left; background:#fff; border:2px solid var(--line); border-radius:10px; padding:6px 9px; font:inherit; font-size:.86rem; cursor:pointer; color:var(--ink)}
+button.ls-row{border-color:var(--ink)}
+.ls-row .ls-lvl{flex:0 0 auto; font-weight:800; font-size:.72rem; color:var(--ink2); background:var(--cream); border:1.5px solid var(--line); border-radius:6px; padding:2px 6px; min-width:52px; text-align:center}
+.ls-row .ls-name{flex:1 1 auto; font-weight:700}
+.ls-row .ls-type{flex:0 0 auto; font-size:.68rem; font-weight:800; border-radius:999px; padding:2px 8px; text-shadow:0 1px 1px rgba(0,0,0,.25)}
+.ls-row .ls-ok{flex:0 0 auto; color:#1e7d32; font-weight:900}
+.ls-row.locked{opacity:.48; filter:grayscale(.5); cursor:default}
 details.fold{border:2px solid var(--line); border-radius:12px; padding:8px 10px; margin:0 0 10px; background:#fffef9}
 details.fold > summary{font-weight:800; cursor:pointer; color:var(--ink2)}
 .badges-row{display:flex; flex-wrap:wrap; gap:8px}
