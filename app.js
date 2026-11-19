@@ -30,6 +30,8 @@ var EXTRA = {
         learnsetTitle: "Attaques par montée de niveau",
         lsLoading: "Chargement des attaques officielles…", lsOffline: "Liste des attaques indisponible hors ligne.",
         mjWorking: "Le MJ au travail",
+        sceneLbl: "Scène du MJ", scenesTitle: "Scènes du MJ",
+        grpTogether: "Groupe réuni", grpSplit: "Groupe séparé", arenaNow: "Combat d'arène en cours",
         atGym: "Arène", champion: "Champion", noPlaceImg: "Illustration à venir pour ce lieu.", albumNote: "Les compagnons du voyage, tels qu'ils sont aujourd'hui." },
   jp: { changePlayer: "プレイヤーを変更", loading: "セーブデータを読み込み中…", loadError: "データを読み込めませんでした。接続を確認して、もう一度お試しください。",
         retry: "再試行", hp: "HP", money: "円", turnW: "ターン", chapterW: "チャプター", situation: "現在の状況",
@@ -41,6 +43,8 @@ var EXTRA = {
         learnsetTitle: "レベルアップで覚えるわざ",
         lsLoading: "公式のわざデータを読み込み中…", lsOffline: "オフラインのため、わざリストを表示できません。",
         mjWorking: "GMが作業中",
+        sceneLbl: "GMのシーン", scenesTitle: "GMのシーン",
+        grpTogether: "全員集合", grpSplit: "別行動中", arenaNow: "ジム戦の最中",
         atGym: "ジム", champion: "ジムリーダー", noPlaceImg: "この場所のイラストは準備中です。", albumNote: "旅の仲間たち、今の姿。" }
 };
 function T(k) { var d = (window.I18N && window.I18N[lang]) || {}; if (d[k] != null) return d[k]; var e = EXTRA[lang] || {}; return e[k] != null ? e[k] : k; }
@@ -329,16 +333,26 @@ var COMPOSER_TOP = { text: "actionTextTop", send: "sendActionTop", msg: "sendMsg
 /* Copie du bloc du tour, juste sous l'illustration du lieu, disposée comme
    la référence d'Axel : deux cartes joueurs (portrait rond, nom, statut),
    puis le texte de l'action de chacun, puis le même formulaire d'envoi. */
+/* Nom du lieu d'un joueur, depuis map.playersHere (identifiants « celadopole »,
+   « safrania »…) rapprochés des lieux de la carte par leur nom normalisé. */
+function placeNameOf(pid) {
+  if (!pid) return null;
+  var pl = ((DB.state.map || {}).places || []).filter(function (p) { return normName(p.fr) === pid; })[0];
+  return pl ? pick(pl) : null;
+}
 function turnTopHTML() {
   var st = DB.state;
-  var h = '<section class="card" id="turnTop"><span class="pill">' + (lang === "jp" ? "第" + st.turn + "ターン" : "Tour n°" + st.turn) + "</span><h3>" + esc(T("composertitle")) + "</h3>";
+  var pres = (st.map || {}).playersHere || {};
+  var h = '<section class="card turn-card" id="turnTop"><span class="pill">' + (lang === "jp" ? "第" + st.turn + "ターン" : "Tour n°" + st.turn) + "</span><h3>" + esc(T("composertitle")) + "</h3>";
   h += '<div class="duel-cards">' + ["julien", "ryo"].map(function (slug) {
     var info = playerTurnInfo(slug);
     var c = charOf(slug) || {};
     var img = c.img || ("assets/portrait-" + slug + ".webp");
     var stLbl = info.status === "sent" ? "📤 " + X("stSent") : (info.status === "draft" ? "📝 " + T("draftLbl") : "⌛ " + X("stNone"));
+    var locName = placeNameOf(pres[slug]);
     return '<div class="pcard"><img class="pcard-face" src="' + esc(img) + '" alt="">' +
       '<div class="pcard-name">' + esc(nameOf(slug)) + '</div>' +
+      (locName ? '<div><span class="pcard-loc">📍 ' + esc(lang === "jp" ? locName : "À " + locName) + "</span></div>" : "") +
       '<div class="pcard-status ' + info.status + '">' + esc(stLbl) + "</div></div>";
   }).join("") + "</div>";
   h += ["julien", "ryo"].map(function (slug) {
@@ -415,24 +429,74 @@ function setupMjPolling() {
   }, 10000);
 }
 
+/* ============ Scènes du MJ (game_state.data.scenes) ============
+   Règle maison : une scène du MJ s'affiche EN ÉVIDENCE sur l'accueil pendant
+   UN tour — celui qui suit sa création (scene.turnNumber = tour de création,
+   donc visible quand state.turn === turnNumber + 1) — puis elle ne vit plus
+   que dans le Journal (section « Scènes du MJ » de viewJournal). Les textes
+   stockés sont des chaînes FR (ou objets bilingues si un jour ils le sont) :
+   on affiche ce qui existe, sans rien inventer. */
+function sceneField(v) { return v && typeof v === "object" ? pick(v) : (typeof v === "string" ? v : null); }
+function activeScene() {
+  var sc = (DB.state && DB.state.scenes) || [];
+  for (var i = 0; i < sc.length; i++) if (sc[i] && sc[i].turnNumber === DB.state.turn - 1) return sc[i];
+  return null;
+}
+function pastScenes() {
+  var act = activeScene();
+  return ((DB.state && DB.state.scenes) || []).filter(function (s) { return s && s !== act; });
+}
+function sceneCardHTML() {
+  var s = activeScene();
+  if (!s) return "";
+  var title = sceneField(s.title), clock = sceneField(s.clockText), txt = sceneField(s.text);
+  return '<section class="card scene-card" data-scene="' + esc(s.sceneKey || s.id || "") + '"><span class="pill">' + esc(X("sceneLbl")) + "</span>" +
+    (title ? "<h3>" + esc(title) + "</h3>" : "") +
+    (clock ? '<p class="muted small">' + esc(clock) + "</p>" : "") +
+    (txt ? '<div class="reso-text">' + esc(txt) + "</div>" : "") + "</section>";
+}
+/* Résolution d'accueil en extrait façon démo : 3 premiers paragraphes
+   visibles, le reste replié derrière « Lire la résolution complète ». */
+function resoExcerptHTML(txt) {
+  var ps = String(txt).split(/\n\s*\n/).map(function (p) { return p.trim(); }).filter(Boolean);
+  if (ps.length <= 3) return '<div class="reso-text">' + esc(txt) + "</div>";
+  return '<div class="reso-text" id="resoHomeTxt">' + esc(ps.slice(0, 3).join("\n\n")) +
+    '<span class="more" hidden>' + esc("\n\n" + ps.slice(3).join("\n\n")) + "</span></div>" +
+    '<button type="button" class="linkbtn" id="resoMoreBtn">' + esc(T("readmore")) + "</button>";
+}
+
 function viewHome() {
   var st = DB.state, reso = lastReso();
   var h = "";
-  /* Bandeau d'infos — calculé */
+  /* Bandeau d'infos — calculé, avec les sous-lignes de la démo dérivées des
+     données réelles : « 12e jour du voyage » (n° du jour de l'horloge),
+     « Combat d'arène en cours » (lieu = une arène), « Groupe réuni / séparé »
+     (présences), « En cours » (tour ouvert). */
   var locTxt = pick(st.location) || "";
   var clockTxt = pick(st.clock) || "";
   var clockParts = clockTxt.split(/\s*[—–-]\s*/);
   var dayTxt = clockParts[0] || clockTxt, timeTxt = clockParts.slice(1).join(" — ") || clockTxt;
+  var dayNumM = dayTxt.match(/(\d+)/);
+  var daySub = "";
+  if (dayNumM) { var dn = parseInt(dayNumM[1], 10); daySub = lang === "jp" ? "旅の" + dn + "日目" : (dn === 1 ? "1er" : dn + "e") + " jour du voyage"; }
+  var timeSub = (/arène/i.test(locTxt) || /ジム/.test(locTxt)) ? X("arenaNow") : "";
+  var presBand = (st.map || {}).playersHere || {};
+  var placeSub = (presBand.julien && presBand.ryo) ? X(presBand.julien === presBand.ryo ? "grpTogether" : "grpSplit") : "";
+  function ibCell(k, v, sub) {
+    return '<div class="ib"><div class="ib-k">' + esc(k) + '</div><div class="ib-v">' + esc(v) + "</div>" + (sub ? '<div class="ib-sub">' + esc(sub) + "</div>" : "") + "</div>";
+  }
   h += '<div class="infoband">' +
-    '<div class="ib"><div class="ib-k">' + esc(T("bandDay")) + '</div><div class="ib-v">' + esc(dayTxt) + '</div></div>' +
-    '<div class="ib"><div class="ib-k">' + esc(T("bandTime")) + '</div><div class="ib-v">' + esc(timeTxt) + '</div></div>' +
-    '<div class="ib"><div class="ib-k">' + esc(T("bandPlace")) + '</div><div class="ib-v">' + esc(locTxt) + '</div></div>' +
-    '<div class="ib"><div class="ib-k">' + esc(T("bandTurn")) + '</div><div class="ib-v">' + (lang === "jp" ? "第" + st.turn + "ターン（進行中）" : "Tour n°" + st.turn + " — en cours") + "</div></div></div>";
+    ibCell(T("bandDay"), dayTxt, daySub) +
+    ibCell(T("bandTime"), timeTxt, timeSub) +
+    ibCell(T("bandPlace"), locTxt, placeSub) +
+    ibCell(T("bandTurn"), lang === "jp" ? "第" + st.turn + "ターン" : "Tour n°" + st.turn, lang === "jp" ? "進行中" : "En cours") + "</div>";
   h += placeBlock();
   /* Copie du bloc du tour, juste sous l'illustration du lieu */
   h += turnTopHTML();
   /* Statut de résolution du MJ en temps réel (si le MJ en publie un) */
   h += mjCardHTML();
+  /* Scène du MJ en évidence pendant le tour qui suit sa création */
+  h += sceneCardHTML();
   /* Phase de dés + résolution du dernier tour */
   if (reso) {
     var dice = diceOf(reso);
@@ -464,7 +528,7 @@ function viewHome() {
     var resoTxt = pick(reso.text);
     h += '<div id="resoBox" style="margin-top:12px">';
     if (!dice.length || allRolled) {
-      h += resoTxt ? '<div class="reso-text">' + esc(resoTxt) + "</div>" : '<p class="muted">' + esc(X("noJpReso")) + "</p>";
+      h += resoTxt ? resoExcerptHTML(resoTxt) : '<p class="muted">' + esc(X("noJpReso")) + "</p>";
     } else {
       h += '<div class="lock-note">🔒 ' + esc(T("diceIntro")) + '</div><div class="reso-text locked-box" aria-hidden="true">' + esc(resoTxt || X("noJpReso")) + "</div>";
     }
@@ -478,9 +542,9 @@ function viewHome() {
   }
   /* Objectif (Accueil + Journal uniquement) */
   var obj = pick(st.objective);
-  if (obj) h += '<section class="card"><span class="pill">' + esc(T("objlabel")) + '</span><div class="reso-text">' + esc(obj) + "</div></section>";
+  if (obj) h += '<section class="card quest-card"><span class="pill">' + esc(T("objlabel")) + '</span><div class="reso-text">' + esc(obj) + "</div></section>";
   /* Actions du tour en cours + composer (bloc d'origine, synchronisé avec la copie du haut) */
-  h += '<section class="card"><span class="pill">' + (lang === "jp" ? "第" + st.turn + "ターン" : "Tour n°" + st.turn) + "</span><h3>" + esc(T("composertitle")) + "</h3>";
+  h += '<section class="card turn-card"><span class="pill">' + (lang === "jp" ? "第" + st.turn + "ターン" : "Tour n°" + st.turn) + "</span><h3>" + esc(T("composertitle")) + "</h3>";
   ["julien", "ryo"].forEach(function (slug) {
     var info = playerTurnInfo(slug);
     info.sent.forEach(function (a) {
@@ -492,6 +556,12 @@ function viewHome() {
   });
   h += composerHTML(COMPOSER_MAIN);
   h += "</section>";
+  /* Bande déco de la démo, en bas de l'accueil : Poké Ball, Centre Pokémon,
+     Super Ball (pixel art, pure décoration — fichiers déjà dans les assets). */
+  h += '<div class="deco-strip" aria-hidden="true">' +
+    '<img src="assets/deco-pokeball.png" alt="" style="width:26px;height:26px">' +
+    '<img src="assets/deco-centre-pokemon.png" alt="" style="width:58px;height:58px">' +
+    '<img src="assets/deco-superball.png" alt="" style="width:26px;height:26px"></div>';
   return h;
 }
 /* Classe de tuile façon démo : couleur selon le verdict, dorée si réussite nette. */
@@ -571,6 +641,14 @@ function bindHome() {
     var reso = lastReso(); var dice = diceOf(reso); var stDice = diceState(reso.turn);
     var pending = dice.map(function (d, i) { return i; }).filter(function (i) { return !stDice[i]; });
     pending.forEach(function (i, k) { setTimeout(function () { rollDie(i); }, k * 180); });
+  });
+  var mb = $("resoMoreBtn");
+  if (mb) mb.addEventListener("click", function () {
+    var m = document.querySelector("#resoHomeTxt .more");
+    if (!m) return;
+    var open = m.hidden;
+    m.hidden = !open;
+    mb.textContent = open ? T("readless") : T("readmore");
   });
   bindComposer(COMPOSER_MAIN);
   bindComposer(COMPOSER_TOP);
@@ -747,7 +825,7 @@ function viewTeams() {
   }).join("") + "</div>";
   if (openPassport) {
     var c = charOf(openPassport), st = stats[openPassport];
-    h += '<section class="card"><span class="pill">' + esc(T("passportTitle")) + '</span>' +
+    h += '<section class="card passport-card"><span class="pill">' + esc(T("passportTitle")) + '</span>' +
       '<div class="sheet-head"><img src="' + esc(c.img || "") + '" alt="" style="image-rendering:auto"><div><div class="sh-name">' + esc(nameOf(openPassport)) + '</div><div class="muted small">' + esc(pick(c.role) || "") + "</div></div></div>" +
       '<table class="kv">' +
       "<tr><th>" + esc(T("talent")) + "</th><td><b>" + esc(pick(c.talent) || "") + "</b>" + (pick(c.talentDesc) ? "<br>" + esc(pick(c.talentDesc)) : "") + "</td></tr>" +
@@ -898,8 +976,10 @@ function charItem(c, open) {
   var fi = pick(c.first); if (fi) body += "<p><b>" + esc(T("firstMeetLbl")) + "</b><br>" + esc(fi) + "</p>";
   var fa = pick(c.facts); if (fa) body += "<p><b>" + esc(T("factsLbl")) + "</b><br>" + esc(fa) + "</p>";
   var no = c.note ? pick(c.note) : null; if (no) body += "<p>" + esc(no) + "</p>";
+  /* Pastille de statut dorée visible sur la fiche FERMÉE, à côté du rôle (démo). */
   return '<details class="char-item" data-charname="' + esc((c.name + " " + (c.nameJp || "")).toLowerCase()) + '"' + (open ? " open" : "") + "><summary>" + face +
-    '<span><span class="ci-name">' + esc(nm) + '</span><br><span class="ci-role">' + esc(pick(c.role) || "") + "</span></span></summary>" +
+    '<span class="ci-main"><span class="ci-name">' + esc(nm) + '</span><br><span class="ci-role">' + esc(pick(c.role) || "") + "</span>" +
+    (st ? '<br><span class="pill gold ci-status">' + esc(st) + "</span>" : "") + "</span></summary>" +
     '<div class="ci-body">' + body + "</div></details>";
 }
 function viewChars() {
@@ -909,10 +989,15 @@ function viewChars() {
     '<input class="search-input" id="charSearch" type="search" placeholder="' + esc(X("searchNpc")) + '">' +
     '<div style="margin-bottom:10px"><button type="button" class="btn blue" id="openAllChars">' + esc(T("openAll")) + '</button> <button type="button" class="btn blue" id="closeAllChars">' + esc(T("closeAll")) + "</button></div>" +
     '<div id="charList">';
-  groups.forEach(function (g) {
+  groups.forEach(function (g, gi) {
     var inG = chars.filter(function (c) { return c.group === g; });
     if (!inG.length) return;
-    h += '<div class="obj-cat">' + esc(groupName(g)) + "</div>" + inG.map(function (c) { return charItem(c, window.__openNpc && (c.name === window.__openNpc || c.nameJp === window.__openNpc)); }).join("");
+    var isTarget = function (c) { return window.__openNpc && (c.name === window.__openNpc || c.nameJp === window.__openNpc); };
+    var names = inG.map(function (c) { return lang === "jp" ? (c.nameJp || c.name) : c.name; }).join(" · ");
+    /* En-tête de groupe façon démo : repliable, avec le nombre et la liste des
+       noms des membres ; 1er groupe ouvert (ou celui de la fiche ciblée). */
+    h += '<details class="char-group"' + (gi === 0 || inG.some(isTarget) ? " open" : "") + '><summary><span class="obj-cat">' + esc(groupName(g)) + '</span> <span class="cg-meta">(' + inG.length + ") — " + esc(names) + "</span></summary>" +
+      inG.map(function (c) { return charItem(c, isTarget(c)); }).join("") + "</details>";
   });
   h += '</div><p class="muted small" id="noCharMsg" hidden>' + esc(T("noChar")) + "</p>";
   return h;
@@ -925,16 +1010,27 @@ function bindChars() {
       var show = !q || d.getAttribute("data-charname").indexOf(q) >= 0;
       d.style.display = show ? "" : "none"; if (show) any = true;
     });
+    /* Pendant une recherche, ouvrir les groupes qui contiennent un résultat. */
+    Array.prototype.forEach.call(document.querySelectorAll(".char-group"), function (g, gi) {
+      if (!q) { g.open = gi === 0; return; }
+      g.open = Array.prototype.some.call(g.querySelectorAll(".char-item"), function (d) { return d.style.display !== "none"; });
+    });
     $("noCharMsg").hidden = any;
   });
   var oa = $("openAllChars"), ca = $("closeAllChars");
-  if (oa) oa.addEventListener("click", function () { Array.prototype.forEach.call(document.querySelectorAll(".char-item"), function (d) { d.open = true; }); });
+  if (oa) oa.addEventListener("click", function () { Array.prototype.forEach.call(document.querySelectorAll(".char-item"), function (d) { d.open = true; }); Array.prototype.forEach.call(document.querySelectorAll(".char-group"), function (d) { d.open = true; }); });
   if (ca) ca.addEventListener("click", function () { Array.prototype.forEach.call(document.querySelectorAll(".char-item"), function (d) { d.open = false; }); });
   if (window.__openNpc) { var target = document.querySelector(".char-item[open]"); if (target) target.scrollIntoView({ block: "center" }); window.__openNpc = null; }
 }
 
 /* ================= Inventaire ================= */
 var bagView = null;
+function itemRowHTML(it) {
+  var nm = it.name ? pick(it.name) : null;
+  return '<div class="item-row">' + itemIconHTML(it) + '<div class="item-body">' +
+    '<div class="item-name">' + esc(nm || "?") + (it.qty > 1 ? " <b>×" + it.qty + "</b>" : "") + "</div>" +
+    (it.note && pick(it.note) ? '<p class="small muted item-note">' + esc(pick(it.note)) + "</p>" : "") + "</div></div>";
+}
 function viewBag() {
   var slug = bagView || me;
   var h = "<h1>" + esc(T("bagTitle")) + '</h1><p class="intro">' + esc(T("bagIntro")) + '</p><div class="bag-switch">' +
@@ -946,12 +1042,13 @@ function viewBag() {
     }).join("") + "</div>";
   var items = DB.items.filter(function (it) { return it.owner === slug && it.qty > 0; });
   h += '<section class="card"><span class="pill">' + esc(nameOf(slug)) + "</span>" +
-    (items.length ? items.map(function (it) {
-      var nm = it.name ? pick(it.name) : null;
-      return '<div class="item-row">' + itemIconHTML(it) + '<div class="item-body">' +
-        '<div class="item-name">' + esc(nm || "?") + (it.qty > 1 ? " <b>×" + it.qty + "</b>" : "") + "</div>" +
-        (it.note && pick(it.note) ? '<p class="small muted item-note">' + esc(pick(it.note)) + "</p>" : "") + "</div></div>";
-    }).join("") : '<p class="muted">' + esc(X("noText")) + "</p>") + "</section>";
+    (items.length ? items.map(itemRowHTML).join("") : '<p class="muted">' + esc(X("noText")) + "</p>") + "</section>";
+  /* Carte partagée « Documents & objets de quête » (démo) : objets sans owner
+     joueur (owner « quete »), distincte des deux sacs. */
+  var quest = DB.items.filter(function (it) { return it.owner === "quete" && it.qty > 0; });
+  if (quest.length) {
+    h += '<section class="card quest-card"><span class="pill">' + esc(T("questItems")) + "</span>" + quest.map(itemRowHTML).join("") + "</section>";
+  }
   return h;
 }
 function bindBag() {
@@ -961,13 +1058,35 @@ function bindBag() {
 }
 
 /* ================= Objectifs ================= */
+/* Checklist d'étapes d'une quête (pastilles Fait / À faire), quand la base en
+   fournit (dossier de Lavanville, repris de la démo). */
+function stepsHTML(o) {
+  if (!o.steps || !o.steps.length) return "";
+  return '<ul class="quest-steps">' + o.steps.map(function (s) {
+    return '<li><span class="pill ' + (s.done ? "gold" : "grey") + '">' + esc(s.done ? T("doneLbl") : T("todoLbl")) + '</span><span>' + esc(pick(s.label) || "") + "</span></li>";
+  }).join("") + "</ul>";
+}
+/* Tableau du devis poste par poste (démo), coûts formatés + ligne total. */
+function budgetHTML(o) {
+  if (!o.budget || !o.budget.length) return "";
+  var loc = lang === "jp" ? "ja-JP" : "fr-FR", cur = X("money");
+  var total = o.budgetTotal != null ? o.budgetTotal : o.budget.reduce(function (a, r) { return a + (r.cost || 0); }, 0);
+  return '<h3 class="budget-h">' + esc(T("budgetTitle")) + '</h3><table class="budget"><tr><th>' + esc(T("budgetItem")) + "</th><th>" + esc(T("budgetCost")) + "</th></tr>" +
+    o.budget.map(function (r) { return "<tr><td>" + esc(pick(r.label) || "") + "</td><td>" + Number(r.cost || 0).toLocaleString(loc) + " " + esc(cur) + "</td></tr>"; }).join("") +
+    '<tr class="total"><td>' + esc(T("budgetTotal")) + "</td><td>" + Number(total).toLocaleString(loc) + " " + esc(cur) + "</td></tr></table>";
+}
 function viewQuests() {
   var cats = [["principal", T("mainQuest")], ["secondaire", T("sideQuests")], ["personnel", lang === "jp" ? "個人的な目標" : "Objectifs personnels"], ["rumeur", T("rumors")]];
   var h = "<h1>" + esc(T("questsTitle")) + '</h1><p class="intro">' + esc(T("questsIntro")) + "</p>";
-  h += '<section class="card neutral"><span class="pill">' + esc(T("badgeQuestTitle")) + '</span><p class="small">' + esc(T("badgeQuestDesc")) + "</p>" +
+  /* Vitrine des badges façon démo, par joueur : gros compteur N / 8,
+     pourcentage, barre de progression et les 8 badges officiels. */
+  h += '<section class="card neutral quest-card"><span class="pill">' + esc(T("badgeQuestTitle")) + '</span><p class="small">' + esc(T("badgeQuestDesc")) + "</p>" +
     ["julien", "ryo"].map(function (slug) {
       var c = charOf(slug);
-      return '<div class="kv-line"><span>' + esc(nameOf(slug)) + '</span><b>' + (c.badges || []).length + " / 8 " + esc(T("badgesWord")) + "</b></div>";
+      var n = (c.badges || []).length, pct = Math.round(100 * n / 8);
+      return '<div class="badge-block"><div class="badge-head"><span class="bb-name">' + esc(nameOf(slug)) + '</span>' +
+        '<span class="badge-pct">' + n + " / 8 " + esc(T("badgesWord")) + '</span><span class="pill gold">' + pct + " %</span></div>" +
+        '<div class="hpbar bigbar"><i style="width:' + pct + '%"></i></div>' + badgesHTML(slug) + "</div>";
     }).join("") + "</section>";
   var done = [];
   cats.forEach(function (cat) {
@@ -975,7 +1094,8 @@ function viewQuests() {
     list.forEach(function (o) { /* triées par id dans la base */ });
     if (!list.length) return;
     h += '<div class="obj-cat">' + esc(cat[1]) + "</div>" + list.map(function (o) {
-      return '<section class="card"><b>' + esc(pick(o.title) || "") + '</b><div class="reso-text" style="margin-top:4px">' + esc(pick(o.text) || "") + "</div>" +
+      return '<section class="card quest-card"><b>' + esc(pick(o.title) || "") + '</b><div class="reso-text" style="margin-top:4px">' + esc(pick(o.text) || "") + "</div>" +
+        stepsHTML(o) + budgetHTML(o) +
         (pick(o.source) ? '<p class="small muted" style="margin:6px 0 0">' + esc(pick(o.source)) + "</p>" : "") + "</section>";
     }).join("");
   });
@@ -1099,12 +1219,16 @@ function viewJournal() {
   var reso = lastReso();
   var h = "<h1>" + esc(T("tabjournal")) + "</h1>";
   if (reso) {
-    h += '<section class="card"><span class="pill">' + esc(T("prevTitle")) + '</span><h3>' +
+    /* Carte « tour précédent » : résumé court (champ recap) quand il existe,
+       sinon le texte intégral comme avant. */
+    var recap = reso.recap ? pick(reso.recap) : null;
+    h += '<section class="card journal-entry"><span class="pill">' + esc(T("prevTitle")) + '</span><h3>' +
       (lang === "jp" ? "第" + reso.turn + "ターン" : "Tour n°" + reso.turn) + " — " + esc(pick(reso.clock) || "") + "</h3>" +
-      (pick(reso.text) ? '<div class="reso-text">' + esc(pick(reso.text)) + "</div>" : '<p class="muted">' + esc(X("noJpReso")) + "</p>") + "</section>";
+      (recap ? '<div class="reso-text">' + esc(recap) + "</div>"
+        : (pick(reso.text) ? '<div class="reso-text">' + esc(pick(reso.text)) + "</div>" : '<p class="muted">' + esc(X("noJpReso")) + "</p>")) + "</section>";
   }
   var obj = pick(DB.state.objective);
-  if (obj) h += '<section class="card"><span class="pill">' + esc(T("objlabel")) + '</span><div class="reso-text">' + esc(obj) + "</div></section>";
+  if (obj) h += '<section class="card quest-card"><span class="pill">' + esc(T("objlabel")) + '</span><div class="reso-text">' + esc(obj) + "</div></section>";
   /* Album de souvenirs */
   var figs = [];
   ["julien", "ryo"].forEach(function (slug) {
@@ -1112,16 +1236,25 @@ function viewJournal() {
       figs.push({ img: spriteOf(p.dex), cap: (pick(p.nickname) || spName(p.dex, p.species) || spFr(p.species)) });
     });
   });
-  figs.push({ img: "assets/kuma-sprite-dort.png", cap: nameOf("ryo") === "Ryo" ? "Kuma" : "クマ" });
+  figs.push({ img: "assets/kuma-sprite-assis.png", cap: nameOf("ryo") === "Ryo" ? "Kuma" : "クマ" });
   figs.push({ img: "assets/neko-sprite-assis.png", cap: lang === "jp" ? "ネコ" : "Neko" });
   h += '<section class="card neutral"><span class="pill blue">' + esc(T("albumTitle")) + '</span><p class="small muted">' + esc(X("albumNote")) + '</p><div class="album">' +
     figs.map(function (f) { return "<figure><img src=\"" + esc(f.img) + "\" alt=\"\"><figcaption>" + esc(f.cap) + "</figcaption></figure>"; }).join("") + "</div></section>";
+  /* Scènes du MJ : passé leur tour d'évidence sur l'accueil, elles vivent ici. */
+  var past = pastScenes();
+  if (past.length) {
+    h += '<div class="obj-cat">' + esc(X("scenesTitle")) + "</div>" + past.slice().reverse().map(function (s) {
+      var title = sceneField(s.title), clock = sceneField(s.clockText), txt = sceneField(s.text);
+      return '<details class="fold journal-entry"><summary>' + esc(title || X("sceneLbl")) + (clock ? " — " + esc(clock) : "") + "</summary>" +
+        (txt ? '<div class="reso-text">' + esc(txt) + "</div>" : "") + "</details>";
+    }).join("");
+  }
   /* Entrées du journal */
   var entries = DB.journal.slice().sort(function (a, b) { return (b.id || 0) - (a.id || 0); });
   h += entries.map(function (e) {
     var txt = pick(e.text); if (!txt) return "";
     var head = e.kind === "turn" && e.turn ? (lang === "jp" ? "第" + e.turn + "ターン" : "Tour n°" + e.turn) : null;
-    return '<section class="card">' + (head ? '<span class="pill grey">' + esc(head) + "</span>" : "") + '<div class="reso-text">' + esc(txt) + "</div></section>";
+    return '<section class="card journal-entry">' + (head ? '<span class="pill grey">' + esc(head) + "</span>" : "") + '<div class="reso-text">' + esc(txt) + "</div></section>";
   }).join("");
   /* Historique des résolutions */
   h += '<div class="obj-cat">' + esc(T("resoLabel")) + "</div>" +
