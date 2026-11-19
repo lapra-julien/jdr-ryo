@@ -830,6 +830,18 @@ function sceneCardHTML() {
     (clock ? '<p class="muted small">' + esc(clock) + "</p>" : "") +
     (txt ? '<div class="reso-text">' + esc(txt) + "</div>" : "") + "</section>";
 }
+/* Texte de résolution pour l'ACCUEIL : le paragraphe « Détails techniques »
+   (JP : 「技術詳細」) n'y est jamais affiché — demande de Julien, 2026-11-20 :
+   « on ne le lit jamais », les dés du récit suffisent sur l'accueil. Le texte
+   intégral, détails compris, reste affiché dans le Journal (resoCard) et dans
+   les entrées du journal : on ne masque qu'ici, à l'affichage, sans toucher
+   aux données. */
+function resoHomeText(txt) {
+  return String(txt).split(/\n\s*\n/).filter(function (p) {
+    var t = p.trim();
+    return !/^Détails techniques\b/.test(t) && !/^技術詳細/.test(t);
+  }).join("\n\n");
+}
 /* Résolution d'accueil en extrait façon démo : 3 premiers paragraphes
    visibles, le reste replié derrière « Lire la résolution complète ». */
 function resoExcerptHTML(txt) {
@@ -905,7 +917,7 @@ function viewHome() {
     var resoTxt = pick(reso.text);
     h += '<div id="resoBox" style="margin-top:12px">';
     if (!dice.length || allRolled) {
-      h += resoTxt ? resoExcerptHTML(resoTxt) : '<p class="muted">' + esc(X("noJpReso")) + "</p>";
+      h += resoTxt ? resoExcerptHTML(resoHomeText(resoTxt)) : '<p class="muted">' + esc(X("noJpReso")) + "</p>";
     } else {
       h += '<div class="lock-note">🔒 ' + esc(T("diceIntro")) + '</div><div class="reso-text locked-box" aria-hidden="true">' + esc(resoTxt || X("noJpReso")) + "</div>";
     }
