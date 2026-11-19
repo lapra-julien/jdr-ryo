@@ -649,8 +649,13 @@ function saveDiceState(turn, st) {
    couleur et la durée de l'attente ou du travail en cours :
    - « collecting » (orange) : les deux actions du tour ne sont pas encore
      là — la phrase dit précisément laquelle on attend ;
-   - « waiting » (jaune) : les deux actions sont reçues, on attend le MJ —
-     durée depuis la réception de la dernière action ;
+   - « sending » (jaune) : les deux actions sont reçues, mais leur
+     transmission automatique au MJ (guetteur, toutes les 5 minutes) n'a
+     pas encore eu lieu — durée depuis la réception de la dernière action ;
+   - « sent » (jaune) : les infos ONT été transmises au MJ — la phrase
+     donne l'heure de transmission (game_state.data.mjNotified { turn, at },
+     inscrit par le guetteur ou lors d'une transmission manuelle) et la
+     durée écoulée depuis ; on attend sa prise en charge ;
    - « live » (vert, point pulsant) : le MJ a publié game_state.data.mjStatus
      { turn, step, updatedAt } pour CE tour — la phrase dit ce qu'il fait
      (étape step, base 1, de 1 à 6) et depuis quand cette étape a commencé ;
@@ -696,9 +701,11 @@ function mjActionTimes() {
 }
 /* Modèle d'affichage de la carte pour le tour en cours : voir l'en-tête.
    « since » = début de l'attente ou de l'étape en cours (ms epoch), pour la
-   durée affichée : réception des actions (created_at), ou publication de
-   l'étape par le MJ (mjStatus.updatedAt), ou — tour qui vient de s'ouvrir
-   sans aucune action — la fin du tour précédent (mjStatus périmé, étape 6). */
+   durée affichée : réception des actions (created_at), transmission au MJ
+   (mjNotified.at), ou publication de l'étape par le MJ (mjStatus.updatedAt),
+   ou — tour qui vient de s'ouvrir sans aucune action — la fin du tour
+   précédent (mjStatus périmé, étape 6). */
+function mjClock(t) { var d = new Date(t); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
 function mjModel() {
   if (!DB || !DB.state || DB.state.turn == null) return null;
   var cur = DB.state.turn;
@@ -711,7 +718,14 @@ function mjModel() {
   var times = mjActionTimes();
   if (got.julien && got.ryo) {
     var last = Math.max(times.julien || 0, times.ryo || 0);
-    return { turn: cur, mode: "waiting", step: 1, got: got, since: last || null };
+    var notif = DB.state.mjNotified;
+    var notifAt = (notif && notif.turn === cur) ? mjTimeOf(notif.at) : null;
+    if (notifAt != null) {
+      /* Les infos ont été transmises au MJ (guetteur automatique ou
+         transmission manuelle) : on attend sa prise en charge. */
+      return { turn: cur, mode: "sent", step: 1, got: got, since: notifAt, notifiedAt: notifAt };
+    }
+    return { turn: cur, mode: "sending", step: 1, got: got, since: last || null };
   }
   var since = null;
   if (got.julien || got.ryo) since = got.julien ? times.julien : times.ryo;
@@ -747,8 +761,14 @@ function mjSentence(m) {
     }
     return missing.length === 2 ? "En attente des actions de Julien et de Ryo" : "En attente de l'action de " + names[missing[0]];
   }
-  if (m.mode === "waiting") {
-    return lang === "jp" ? "アクション受信済み — GMの対応待ちです" : "Actions reçues — en attente du MJ";
+  if (m.mode === "sending") {
+    return lang === "jp" ? "アクション受信済み — GMへ送信中です" : "Actions reçues — transmission au MJ en cours";
+  }
+  if (m.mode === "sent") {
+    if (m.notifiedAt == null) return lang === "jp" ? "アクション受信済み — GMへ送信中です" : "Actions reçues — transmission au MJ en cours";
+    return lang === "jp"
+      ? "GMに送信済み（" + mjClock(m.notifiedAt) + "）— GMの対応待ちです"
+      : "Infos transmises au MJ à " + mjClock(m.notifiedAt) + " — en attente de sa prise en charge";
   }
   if (m.mode === "live") {
     var phrases = MJ_LIVE_PHRASES[lang] || MJ_LIVE_PHRASES.fr;
@@ -759,7 +779,7 @@ function mjSentence(m) {
 function mjCardInner(m) {
   var color, pulse = "";
   if (m.mode === "collecting") color = "#e67e22";
-  else if (m.mode === "waiting") color = "#d9a400";
+  else if (m.mode === "sending" || m.mode === "sent") color = "#d9a400";
   else color = "#2e9e4f";
   if (m.mode === "live") pulse = ";animation:mjPulse 1.6s ease-in-out infinite";
   var turnLbl = lang === "jp" ? "第" + m.turn + "ターン" : "Tour n°" + m.turn;
