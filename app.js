@@ -40,6 +40,11 @@ var EXTRA = {
         mjWorking: "Le MJ au travail",
         sceneLbl: "Scène du MJ", scenesTitle: "Scènes du MJ",
         grpTogether: "Groupe réuni", grpSplit: "Groupe séparé", arenaNow: "Combat d'arène en cours",
+        pushTitle: "Notifications du MJ", pushHint: "Reçois une alerte sur ton téléphone dès que la résolution du MJ est publiée.",
+        pushEnable: "Activer", pushOn: "Activées ✓ — tu seras prévenu à chaque résolution du MJ.", pushDisable: "Désactiver",
+        pushDenied: "Le navigateur a refusé les notifications — réactive-les dans les réglages du site pour ce navigateur.",
+        pushUnsupported: "Ce navigateur ne prend pas en charge les notifications push.", pushBusy: "Un instant…",
+        pushIos: "Sur iPhone : ajoute d'abord l'appli à l'écran d'accueil (bouton Partager → « Sur l'écran d'accueil »), puis ouvre-la depuis l'icône et touche la cloche.",
         atGym: "Arène", champion: "Champion", noPlaceImg: "Illustration à venir pour ce lieu.", albumNote: "Les compagnons du voyage, tels qu'ils sont aujourd'hui." },
   jp: { changePlayer: "プレイヤーを変更", loading: "セーブデータを読み込み中…", loadError: "データを読み込めませんでした。接続を確認して、もう一度お試しください。",
         retry: "再試行", hp: "HP", money: "円", turnW: "ターン", chapterW: "チャプター", situation: "現在の状況",
@@ -53,6 +58,11 @@ var EXTRA = {
         mjWorking: "GMが作業中",
         sceneLbl: "GMのシーン", scenesTitle: "GMのシーン",
         grpTogether: "全員集合", grpSplit: "別行動中", arenaNow: "ジム戦の最中",
+        pushTitle: "GMからの通知", pushHint: "GMの結果が公開されたら、スマホにお知らせが届きます。",
+        pushEnable: "オンにする", pushOn: "オン ✓ — GMの結果が出るたびにお知らせします。", pushDisable: "オフにする",
+        pushDenied: "ブラウザで通知が拒否されています — サイト設定から許可してください。",
+        pushUnsupported: "このブラウザはプッシュ通知に対応していません。", pushBusy: "少しお待ちを…",
+        pushIos: "iPhoneでは：まず共有ボタンから「ホーム画面に追加」して、ホーム画面のアイコンから開いてからベルをタップしてください。",
         atGym: "ジム", champion: "ジムリーダー", noPlaceImg: "この場所のイラストは準備中です。", albumNote: "旅の仲間たち、今の姿。" }
 };
 function T(k) { var d = (window.I18N && window.I18N[lang]) || {}; if (d[k] != null) return d[k]; var e = EXTRA[lang] || {}; return e[k] != null ? e[k] : k; }
@@ -198,6 +208,137 @@ function sbPost(table, row) {
   return fetch(REST + "/" + table, { method: "POST", headers: Object.assign({}, HEADERS, { "Content-Type": "application/json", "Prefer": "return=representation" }), body: JSON.stringify(row) })
     .then(function (r) { if (!r.ok) throw new Error("POST " + table + " -> " + r.status); return r.json(); });
 }
+function sbPatch(table, filter, patch) {
+  return fetch(REST + "/" + table + "?" + filter, { method: "PATCH", headers: Object.assign({}, HEADERS, { "Content-Type": "application/json", "Prefer": "return=representation" }), body: JSON.stringify(patch) })
+    .then(function (r) { if (!r.ok) throw new Error("PATCH " + table + " -> " + r.status); return r.json(); });
+}
+/* ================= Notifications push =================
+   La cloche de l'accueil active les notifications du MJ : quand une
+   résolution est publiée, le script d'envoi du MJ (work/push/send-push.js,
+   jamais publié) pousse une alerte à chaque abonné, dans sa langue.
+   Les abonnements vivent dans une LIGNE DÉDIÉE de game_state, repérée par
+   data.key === "push_subscriptions" (pas de nouvelle table) :
+   data = { key:"push_subscriptions", subs:{ julien:[{endpoint,keys,ts}],
+            ryo:[...] }, updatedAt }. Lecture-modification-écriture prudente :
+   on relit toujours la ligne fraîche avant d'écrire, et on ne touche qu'au
+   compartiment du joueur affiché (me). La clé VAPID publique est dans
+   config.js ; la clé privée n'existe que côté MJ. */
+function pushSupported() {
+  return ("serviceWorker" in navigator) && ("PushManager" in window) && ("Notification" in window) && !!CFG.VAPID_PUBLIC_KEY;
+}
+function pushIosNeedsInstall() {
+  var ua = navigator.userAgent || "";
+  var standalone = (window.navigator && window.navigator.standalone) || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+  return /iphone|ipad|ipod/i.test(ua) && !standalone;
+}
+function urlB64ToUint8Array(b64) {
+  var pad = "=".repeat((4 - (b64.length % 4)) % 4);
+  var raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  var arr = new Uint8Array(raw.length);
+  for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+function loadPushData() {
+  return sbGet("/game_state?select=id,data").then(function (rows) {
+    var found = null, maxId = 0;
+    (rows || []).forEach(function (r) {
+      if (typeof r.id === "number" && r.id > maxId) maxId = r.id;
+      if (r.data && r.data.key === "push_subscriptions") found = r;
+    });
+    var subs = (found && found.data && found.data.subs) || {};
+    if (!Array.isArray(subs.julien)) subs.julien = [];
+    if (!Array.isArray(subs.ryo)) subs.ryo = [];
+    return { id: found ? found.id : null, nextId: maxId + 1, subs: subs };
+  });
+}
+function writePushData(cur, subs) {
+  var data = { key: "push_subscriptions", subs: subs, updatedAt: new Date().toISOString() };
+  if (cur.id != null) return sbPatch("game_state", "id=eq." + cur.id, { data: data });
+  return sbPost("game_state", { id: cur.nextId, data: data });
+}
+function savePushSubscription(sub) {
+  var json = (sub && sub.toJSON) ? sub.toJSON() : { endpoint: sub.endpoint, keys: {} };
+  if (!json.keys || !json.keys.p256dh) {
+    try {
+      var k1 = sub.getKey ? sub.getKey("p256dh") : null, k2 = sub.getKey ? sub.getKey("auth") : null;
+      var enc = function (buf) { return buf ? btoa(String.fromCharCode.apply(null, new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") : ""; };
+      json.keys = { p256dh: enc(k1), auth: enc(k2) };
+    } catch (e) {}
+  }
+  return loadPushData().then(function (cur) {
+    cur.subs[me] = cur.subs[me].filter(function (s) { return s.endpoint !== json.endpoint; });
+    cur.subs[me].push({ endpoint: json.endpoint, keys: json.keys, ts: Date.now() });
+    return writePushData(cur, cur.subs);
+  });
+}
+function removePushSubscription(endpoint) {
+  return loadPushData().then(function (cur) {
+    if (cur.id == null) return null;
+    cur.subs[me] = cur.subs[me].filter(function (s) { return s.endpoint !== endpoint; });
+    return writePushData(cur, cur.subs);
+  });
+}
+function pushBarHTML() {
+  return '<div class="push-bar" id="pushBar"><span class="push-bell" aria-hidden="true">🔔</span>' +
+    '<div class="push-txt"><div class="push-title">' + esc(X("pushTitle")) + '</div>' +
+    '<div class="push-msg small muted" id="pushMsg">' + esc(X("pushHint")) + '</div></div>' +
+    '<button type="button" class="btn push-btn" id="pushBtn">' + esc(X("pushEnable")) + "</button></div>";
+}
+function refreshPushUI() {
+  var bar = $("pushBar"), btn = $("pushBtn"), msg = $("pushMsg");
+  if (!bar || !btn || !msg) return;
+  if (!pushSupported()) {
+    btn.hidden = true;
+    msg.textContent = pushIosNeedsInstall() ? X("pushIos") : X("pushUnsupported");
+    return;
+  }
+  if (Notification.permission === "denied") {
+    btn.hidden = true;
+    msg.textContent = X("pushDenied");
+    return;
+  }
+  navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
+    if (!$("pushBar")) return; /* la vue a changé entre-temps */
+    if (sub && Notification.permission === "granted") {
+      bar.classList.add("on");
+      msg.textContent = X("pushOn");
+      btn.hidden = false; btn.disabled = false; btn.textContent = X("pushDisable");
+      btn.onclick = disablePush;
+    } else {
+      bar.classList.remove("on");
+      msg.textContent = X("pushHint");
+      btn.hidden = false; btn.disabled = false; btn.textContent = X("pushEnable");
+      btn.onclick = enablePush;
+    }
+  }).catch(function () {});
+}
+function enablePush() {
+  var btn = $("pushBtn"), msg = $("pushMsg");
+  if (btn) { btn.disabled = true; btn.textContent = X("pushBusy"); }
+  var permP;
+  try { permP = Notification.requestPermission(); } catch (e) { permP = null; }
+  var granted = permP && typeof permP.then === "function"
+    ? permP.then(function (p) { return p === "granted"; })
+    : new Promise(function (res) { try { Notification.requestPermission(function (p) { res(p === "granted"); }); } catch (e) { res(false); } });
+  granted.then(function (ok) {
+    if (!ok) { refreshPushUI(); return null; }
+    return navigator.serviceWorker.ready.then(function (reg) {
+      return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(CFG.VAPID_PUBLIC_KEY) });
+    }).then(function (sub) { return savePushSubscription(sub); });
+  }).then(function () { refreshPushUI(); })
+    .catch(function (e) { console.error("push:", e); if (msg) msg.textContent = X("pushUnsupported"); refreshPushUI(); });
+}
+function disablePush() {
+  var btn = $("pushBtn");
+  if (btn) { btn.disabled = true; btn.textContent = X("pushBusy"); }
+  navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
+    if (!sub) return null;
+    var ep = sub.endpoint;
+    return sub.unsubscribe().then(function () { return removePushSubscription(ep); });
+  }).then(function () { refreshPushUI(); })
+    .catch(function (e) { console.error("push:", e); refreshPushUI(); });
+}
+
 function loadAll() {
   return Promise.all([
     sbGet("/game_state?id=eq.1&select=data"),
@@ -605,6 +746,8 @@ function viewHome() {
     ibCell(T("bandTime"), timeTxt, timeSub) +
     ibCell(T("bandPlace"), locTxt, placeSub) +
     ibCell(T("bandTurn"), lang === "jp" ? "第" + st.turn + "ターン" : "Tour n°" + st.turn, lang === "jp" ? "進行中" : "En cours") + "</div>";
+  /* Cloche des notifications push (activation par joueur, sur cet appareil) */
+  h += pushBarHTML();
   h += placeBlock();
   /* Copie du bloc du tour, juste sous l'illustration du lieu */
   h += turnTopHTML();
@@ -745,6 +888,7 @@ function rollDie(i) {
   }, reduced ? 200 : 1000);
 }
 function bindHome() {
+  refreshPushUI();
   Array.prototype.forEach.call(document.querySelectorAll("[data-die]"), function (b) {
     b.addEventListener("click", function () { rollDie(parseInt(b.getAttribute("data-die"), 10)); });
   });
@@ -1112,9 +1256,10 @@ function viewChars() {
     if (!inG.length) return;
     var isTarget = function (c) { return window.__openNpc && (c.name === window.__openNpc || c.nameJp === window.__openNpc); };
     var names = inG.map(function (c) { return lang === "jp" ? (c.nameJp || c.name) : c.name; }).join(" · ");
-    /* En-tête de groupe façon démo : repliable, avec le nombre et la liste des
-       noms des membres ; 1er groupe ouvert (ou celui de la fiche ciblée). */
-    h += '<details class="char-group"' + (gi === 0 || inG.some(isTarget) ? " open" : "") + '><summary><span class="obj-cat">' + esc(groupName(g)) + '</span> <span class="cg-meta">(' + inG.length + ") — " + esc(names) + "</span></summary>" +
+    /* En-tête de groupe : bande-titre colorée (titre + compteur en pastille
+       jaune + chevron de repli), noms des membres en ligne discrète dessous ;
+       repliable, 1er groupe ouvert (ou celui de la fiche ciblée). */
+    h += '<details class="char-group"' + (gi === 0 || inG.some(isTarget) ? " open" : "") + '><summary><span class="cg-band"><span class="obj-cat cg-title">' + esc(groupName(g)) + '</span><span class="cg-count">' + inG.length + '</span><span class="cg-chev" aria-hidden="true">▾</span></span><span class="cg-names cg-meta">' + esc(names) + "</span></summary>" +
       inG.map(function (c) { return charItem(c, isTarget(c)); }).join("") + "</details>";
   });
   h += '</div><p class="muted small" id="noCharMsg" hidden>' + esc(T("noChar")) + "</p>";
@@ -1454,6 +1599,12 @@ document.addEventListener("visibilitychange", function () {
 });
 
 /* ================= Démarrage ================= */
+/* Service worker des notifications push : UNIQUEMENT push + clic (aucun
+   cache, voir sw.js). Enregistré dès le démarrage, avant même le choix du
+   joueur, pour que la cloche soit prête dès l'accueil. */
+if ("serviceWorker" in navigator) {
+  try { navigator.serviceWorker.register("sw.js").catch(function () {}); } catch (e) {}
+}
 /* Neutralisation de l'ancien état de dés partagé entre identités (v1) :
    toute révélation héritée de l'ancienne clé est effacée, pour qu'aucune
    fuite déjà enregistrée ne subsiste chez l'un ou l'autre joueur. */
