@@ -877,6 +877,11 @@ function viewHome() {
     ibCell(T("bandTime"), timeTxt, timeSub) +
     ibCell(T("bandPlace"), locTxt, placeSub) +
     ibCell(T("bandTurn"), lang === "jp" ? "第" + st.turn + "ターン" : "Tour n°" + st.turn, lang === "jp" ? "進行中" : "En cours") + "</div>";
+  /* Bouton de rafraîchissement manuel (demande de Julien, 2026-11-20) :
+     recharge complètement la page — données fraîches et dernière version
+     de l'appli. L'identité du joueur et l'état des dés, en localStorage,
+     survivent au rechargement : on se retrouve sur l'accueil, connecté. */
+  h += '<div style="text-align:right;margin:0 0 6px"><button type="button" class="linkbtn" id="refreshBtn">↻ ' + esc(lang === "jp" ? "更新" : "Rafraîchir") + "</button></div>";
   /* Cloche des notifications push (activation par joueur, sur cet appareil) */
   h += pushBarHTML();
   h += placeBlock();
@@ -1040,6 +1045,8 @@ function bindHome() {
     m.hidden = !open;
     mb.textContent = open ? T("readless") : T("readmore");
   });
+  var rb = $("refreshBtn");
+  if (rb) rb.addEventListener("click", function () { location.reload(); });
   bindComposer(COMPOSER_MAIN);
   bindComposer(COMPOSER_TOP);
 }
