@@ -566,6 +566,19 @@ function composerHTML(ids) {
     '<textarea class="action-input" id="' + ids.text + '" placeholder="' + esc(T("composerph")) + '"></textarea>' +
     '<div style="margin-top:8px"><button type="button" class="btn" id="' + ids.send + '">' + esc(T("send")) + '</button></div><div id="' + ids.msg + '"></div>';
 }
+/* Titre du bloc d'action : le libellé i18n ne porte plus aucun numéro figé,
+   on lui ajoute le tour EN COURS (state.turn) — jamais le dernier tour résolu. */
+function composerTitle() {
+  var t = DB && DB.state ? DB.state.turn : null;
+  if (t == null) return T("composertitle");
+  return T("composertitle") + " — " + (lang === "jp" ? "第" + t + "ターン" : "tour n°" + t);
+}
+/* Intro de l'Inventaire : même principe, le « tour en cours » est injecté
+   dans le libellé via le marqueur {turn}. */
+function bagIntroText() {
+  var t = DB && DB.state && DB.state.turn != null ? DB.state.turn : "";
+  return String(T("bagIntro")).split("{turn}").join(t);
+}
 var COMPOSER_MAIN = { text: "actionText", send: "sendAction", msg: "sendMsg" };
 var COMPOSER_TOP = { text: "actionTextTop", send: "sendActionTop", msg: "sendMsgTop" };
 /* Copie du bloc du tour, juste sous l'illustration du lieu, disposée comme
@@ -581,7 +594,7 @@ function placeNameOf(pid) {
 function turnTopHTML() {
   var st = DB.state;
   var pres = (st.map || {}).playersHere || {};
-  var h = '<section class="card turn-card" id="turnTop"><span class="pill">' + (lang === "jp" ? "第" + st.turn + "ターン" : "Tour n°" + st.turn) + "</span><h3>" + esc(T("composertitle")) + "</h3>";
+  var h = '<section class="card turn-card" id="turnTop"><span class="pill">' + (lang === "jp" ? "第" + st.turn + "ターン" : "Tour n°" + st.turn) + "</span><h3>" + esc(composerTitle()) + "</h3>";
   h += '<div class="duel-cards">' + ["julien", "ryo"].map(function (slug) {
     var info = playerTurnInfo(slug);
     var c = charOf(slug) || {};
@@ -630,57 +643,129 @@ function saveDiceState(turn, st) {
   } catch (e) {}
 }
 /* ============ Statut de résolution du MJ, en temps réel ============
-   Le MJ publie sa progression dans game_state.data.mjStatus :
-   { turn, step, updatedAt } — step = index (base 1) de l'étape EN COURS, de 1 à 6.
-   L'accueil affiche alors une carte « Le MJ au travail » près du bloc du tour :
-   étapes terminées ✓, étape en cours en évidence (pulsation douce), à venir grisées.
-   Tant que l'étape finale (6) n'est pas atteinte, l'appli réinterroge game_state
-   toutes les ~10 s et met la carte à jour sans rechargement ; à l'étape finale,
-   le polling s'arrête. Sans mjStatus, aucune carte n'est affichée. */
+   La carte « Le MJ au travail » suit le tour EN COURS (state.turn), toujours :
+   elle ne montre jamais les étapes d'un tour précédent. Quatre situations :
+   - « collecting » : les deux actions du tour ne sont pas encore là —
+     l'étape 1 est l'étape en cours et une note dit qui a déjà envoyé la sienne ;
+   - « waiting » : les deux actions sont reçues mais le MJ n'a pas encore
+     publié de statut pour ce tour — étape 1 terminée, note d'attente ;
+   - « live » / « done » : le MJ a publié game_state.data.mjStatus { turn,
+     step, updatedAt } pour CE tour (step = étape en cours, base 1, de 1 à 6) —
+     étapes terminées ✓, en cours en évidence (pulsation douce), à venir
+     grisées ; à l'étape 6 (« done »), tout est coché et le polling s'arrête.
+   Un mjStatus d'un tour précédent (mjStatus.turn < state.turn) est PÉRIMÉ :
+   il est ignoré et la carte retombe sur l'état dérivé du tour en cours —
+   c'est le bug corrigé le 2026-11-20 (la carte restait figée, tout coché,
+   sur le dernier tour résolu pendant que le tour suivant attendait).
+   Tant que le tour n'est pas « done », l'accueil réinterroge game_state et
+   les actions toutes les ~10 s et met la carte à jour sans rechargement ;
+   si le tour change (résolution publiée), rechargement complet pour faire
+   apparaître la résolution en haut de l'accueil. */
 var MJ_STEPS = {
   fr: ["Actions reçues", "Vérification de la partie", "Lecture de vos actions", "Résolution du tour", "Écriture du résultat", "Terminé — nouveau tour ouvert"],
   jp: ["アクション受信済み", "ゲームの状態を確認中", "アクションを読み取り中", "ターンを解決中", "結果を書き込み中", "完了 — 次のターンが開きました"]
+};
+var MJ_NOTE_WAITING = {
+  fr: "Vos deux actions sont reçues — en attente du MJ. La carte se mettra à jour toute seule dès qu'il s'y met.",
+  jp: "2人のアクションがそろいました — GMの対応待ちです。始まると自動で更新されます。"
 };
 function mjStatusOf() {
   var s = DB && DB.state ? DB.state.mjStatus : null;
   return (s && typeof s.step === "number" && isFinite(s.step)) ? s : null;
 }
-function mjCardInner(s) {
-  var step = Math.max(1, Math.min(6, Math.round(s.step)));
+function mjActionsGot() {
+  var got = { julien: false, ryo: false };
+  ((DB && DB.actions) || []).forEach(function (a) {
+    if (a && Object.prototype.hasOwnProperty.call(got, a.trainer_slug)) got[a.trainer_slug] = true;
+  });
+  return got;
+}
+/* Modèle d'affichage de la carte pour le tour en cours : voir l'en-tête. */
+function mjModel() {
+  if (!DB || !DB.state || DB.state.turn == null) return null;
+  var cur = DB.state.turn;
+  var s = mjStatusOf();
+  if (s && typeof s.turn === "number" && s.turn >= cur) {
+    var step = Math.max(1, Math.min(6, Math.round(s.step)));
+    return { turn: cur, mode: step >= 6 ? "done" : "live", step: step };
+  }
+  var got = mjActionsGot();
+  if (got.julien && got.ryo) return { turn: cur, mode: "waiting", step: 1, got: got };
+  return { turn: cur, mode: "collecting", step: 1, got: got };
+}
+function mjStepState(m, n) {
+  if (m.mode === "done") return { cls: "done" + (n === 6 ? " final" : ""), ico: "✓" };
+  if (m.mode === "live") {
+    if (n < m.step) return { cls: "done", ico: "✓" };
+    if (n === m.step) return { cls: "current", ico: "●" };
+    return { cls: "todo", ico: String(n) };
+  }
+  if (m.mode === "waiting") {
+    if (n === 1) return { cls: "done", ico: "✓" };
+    return { cls: "todo", ico: String(n) };
+  }
+  /* collecting : la réception des actions est l'étape en cours */
+  if (n === 1) return { cls: "current", ico: "●" };
+  return { cls: "todo", ico: String(n) };
+}
+function mjNoteHTML(m) {
+  if (m.mode === "waiting") {
+    return '<div class="muted small" style="margin-top:6px">' + esc(MJ_NOTE_WAITING[lang] || MJ_NOTE_WAITING.fr) + "</div>";
+  }
+  if (m.mode === "collecting") {
+    var names = lang === "jp" ? { julien: "ジュリアン", ryo: "リョウ" } : { julien: "Julien", ryo: "Ryo" };
+    var parts = ["julien", "ryo"].map(function (slug) {
+      return names[slug] + (m.got[slug] ? " ✓" : (lang === "jp" ? "：未送信" : " : en attente"));
+    });
+    var prefix = lang === "jp" ? "このターンのアクション — " : "Actions du tour — ";
+    return '<div class="muted small" style="margin-top:6px">' + esc(prefix + parts.join(" · ")) + "</div>";
+  }
+  return "";
+}
+function mjCardInner(m) {
   var labels = MJ_STEPS[lang] || MJ_STEPS.fr;
   var rows = labels.map(function (lbl, i) {
-    var n = i + 1;
-    var cls, ico;
-    if (n < step || (n === step && step >= 6)) { cls = "done" + (n === step ? " final" : ""); ico = "✓"; }
-    else if (n === step) { cls = "current"; ico = "●"; }
-    else { cls = "todo"; ico = String(n); }
-    return '<div class="mj-step ' + cls + '"><span class="mj-ico">' + ico + '</span><span class="mj-lbl">' + esc(lbl) + "</span></div>";
+    var st = mjStepState(m, i + 1);
+    return '<div class="mj-step ' + st.cls + '"><span class="mj-ico">' + st.ico + '</span><span class="mj-lbl">' + esc(lbl) + "</span></div>";
   }).join("");
+  /* Le numéro affiché est toujours le tour EN COURS (state.turn), jamais
+     celui d'un statut périmé d'un tour précédent. */
   return '<span class="pill blue">' + esc(X("mjWorking")) + "</span>" +
-    (s.turn ? '<span class="muted small">' + (lang === "jp" ? "第" + s.turn + "ターン" : "Tour n°" + s.turn) + "</span>" : "") +
-    '<div class="mj-steps">' + rows + "</div>";
+    '<span class="muted small">' + (lang === "jp" ? "第" + m.turn + "ターン" : "Tour n°" + m.turn) + "</span>" +
+    '<div class="mj-steps">' + rows + "</div>" + mjNoteHTML(m);
 }
 function mjCardHTML() {
-  var s = mjStatusOf();
-  return s ? '<section class="card" id="mjCard">' + mjCardInner(s) + "</section>" : "";
+  var m = mjModel();
+  return m ? '<section class="card" id="mjCard">' + mjCardInner(m) + "</section>" : "";
 }
 var mjPollTimer = null;
 function setupMjPolling() {
   if (mjPollTimer) { clearInterval(mjPollTimer); mjPollTimer = null; }
   if (tab !== "home") return;
-  var s = mjStatusOf();
-  if (!s || s.step >= 6) return;
+  var m0 = mjModel();
+  if (!m0 || m0.mode === "done") return;
   mjPollTimer = setInterval(function () {
     if (tab !== "home") { clearInterval(mjPollTimer); mjPollTimer = null; return; }
     if (document.hidden) return;
     sbGet("/game_state?id=eq.1&select=data").then(function (rows) {
       if (!rows || !rows[0] || !rows[0].data) return;
-      DB.state = rows[0].data;
-      var ns = mjStatusOf();
-      var el = $("mjCard");
-      if (!ns) { if (el) el.remove(); clearInterval(mjPollTimer); mjPollTimer = null; return; }
-      if (el) el.innerHTML = mjCardInner(ns);
-      if (ns.step >= 6) { clearInterval(mjPollTimer); mjPollTimer = null; }
+      var st = rows[0].data;
+      if (st.turn !== DB.state.turn) {
+        /* Résolution publiée entre-temps : rechargement complet — la
+           résolution apparaît en haut de l'accueil et la carte repart
+           sur le nouveau tour. */
+        clearInterval(mjPollTimer); mjPollTimer = null;
+        loadAll().then(function () { render(); }).catch(function () {});
+        return;
+      }
+      DB.state = st;
+      loadActions().then(function () {
+        var nm = mjModel();
+        var el = $("mjCard");
+        if (!nm) { if (el) el.remove(); clearInterval(mjPollTimer); mjPollTimer = null; return; }
+        if (el) el.innerHTML = mjCardInner(nm);
+        if (nm.mode === "done") { clearInterval(mjPollTimer); mjPollTimer = null; }
+      }).catch(function () { /* réseau : on réessaiera au prochain cycle */ });
     }).catch(function () { /* réseau : on réessaiera au prochain cycle */ });
   }, 10000);
 }
@@ -802,7 +887,7 @@ function viewHome() {
   var obj = pick(st.objective);
   if (obj) h += '<section class="card quest-card"><span class="pill">' + esc(T("objlabel")) + '</span><div class="reso-text">' + esc(obj) + "</div></section>";
   /* Actions du tour en cours + composer (bloc d'origine, synchronisé avec la copie du haut) */
-  h += '<section class="card turn-card"><span class="pill">' + (lang === "jp" ? "第" + st.turn + "ターン" : "Tour n°" + st.turn) + "</span><h3>" + esc(T("composertitle")) + "</h3>";
+  h += '<section class="card turn-card"><span class="pill">' + (lang === "jp" ? "第" + st.turn + "ターン" : "Tour n°" + st.turn) + "</span><h3>" + esc(composerTitle()) + "</h3>";
   ["julien", "ryo"].forEach(function (slug) {
     var info = playerTurnInfo(slug);
     info.sent.forEach(function (a) {
@@ -1296,7 +1381,7 @@ function itemRowHTML(it) {
 }
 function viewBag() {
   var slug = bagView || me;
-  var h = "<h1>" + esc(T("bagTitle")) + '</h1><p class="intro">' + esc(T("bagIntro")) + '</p><div class="bag-switch">' +
+  var h = "<h1>" + esc(T("bagTitle")) + '</h1><p class="intro">' + esc(bagIntroText()) + '</p><div class="bag-switch">' +
     ["julien", "ryo"].map(function (s) {
       var c = charOf(s) || {};
       return '<button type="button" data-bagview="' + s + '" class="bag-btn' + (slug === s ? " on" : "") + '" aria-pressed="' + (slug === s) + '">' +
