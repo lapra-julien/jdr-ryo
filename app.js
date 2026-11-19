@@ -1571,11 +1571,22 @@ function viewMap() {
       (pid && imgs[pid] ? '<img class="place-img" src="' + esc(imgs[pid]) + '" alt="">' : "") +
       (pick(next.desc) ? '<div class="reso-text" style="margin-top:8px">' + esc(pick(next.desc)) + "</div>" : "") + "</section>";
   }
-  /* Lieux visités */
+  /* Lieux visités ou non — les villes visitées se déplient : leurs points
+     d'intérêt (place.pois : nom + ce que c'est, rédigés par le MJ à chaque
+     sync — voir SYNC-CHECK.md, section G). */
   h += '<section class="card"><span class="pill">' + esc(T("placesTitle")) + '</span><p class="small">' + esc(T("placesIntro")) + "</p>" +
     places.map(function (p) {
       var lbl = p.state === "visited" ? T("visitedLbl") : (p.state === "here" ? T("lgHere") : T("notVisitedLbl"));
-      return '<div class="kv-line"><span>' + esc(pick(p) || "") + '</span><b>' + esc(lbl) + "</b></div>";
+      var pois = (p.state === "visited" || p.state === "here") && Array.isArray(p.pois) ? p.pois : [];
+      if (!pois.length) {
+        return '<div class="kv-line"><span>' + esc(pick(p) || "") + '</span><b>' + esc(lbl) + "</b></div>";
+      }
+      return '<details class="fold place-fold"><summary>' + esc(pick(p) || "") +
+        ' <span class="muted small">· ' + pois.length + " " + (lang === "jp" ? "件の見どころ" : "points d'intérêt") + " — " + esc(lbl) + "</span></summary>" +
+        pois.map(function (poi) {
+          return '<div class="poi"><b>' + esc(pick(poi) || "") + "</b>" +
+            (pick(poi.desc) ? '<p class="small" style="margin:2px 0 0">' + esc(pick(poi.desc)) + "</p>" : "") + "</div>";
+        }).join("") + "</details>";
     }).join("") + "</section>";
   return h;
 }

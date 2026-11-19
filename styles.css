@@ -506,3 +506,8 @@ body[data-player="ryo"] .char-item::after{background-image:url("assets/wm-kuma.p
 .obj-cat{font-weight:900; color:var(--ink2); margin:14px 0 6px; font-size:.95rem}
 .kv-line{display:flex; justify-content:space-between; gap:8px; padding:4px 0; border-bottom:1px dashed var(--line); font-size:.9rem}
 .kv-line b{text-align:right}
+
+/* Points d'intérêt des villes (onglet Carte) */
+details.place-fold{margin:0 0 8px}
+.poi{border-top:1px dashed var(--line); padding:7px 2px 3px}
+.poi:first-of-type{border-top:none}
