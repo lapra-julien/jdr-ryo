@@ -563,9 +563,108 @@ function composerHTML(ids) {
   var mine = DB.actions.filter(function (a) { return a.trainer_slug === me; });
   if (mine.length) return '<div class="sent-ok">' + esc(T("sent")) + "</div>";
   return '<label class="small" for="' + ids.text + '">' + esc(T("composerlabel")) + '</label>' +
-    '<textarea class="action-input" id="' + ids.text + '" placeholder="' + esc(T("composerph")) + '"></textarea>' +
-    '<div style="margin-top:8px"><button type="button" class="btn" id="' + ids.send + '">' + esc(T("send")) + '</button></div><div id="' + ids.msg + '"></div>';
+    '<textarea class="action-input" id="' + ids.text + '" placeholder="' + esc(T("composerph")) + '">' + esc(COMPOSER_DRAFTS[ids.text] || "") + '</textarea>' +
+    '<div style="margin-top:8px"><button type="button" class="btn" id="' + ids.send + '">' + esc(T("send")) + '</button></div><div id="' + ids.msg + '"></div>' + suggHTML(ids);
 }
+
+/* ================= Suggestions du MJ =================
+   Le MJ publie, à chaque résolution, game_state.data.suggestions :
+   { turn: <tour OUVERT par la résolution>, julien: [3-4 idées FR],
+     ryo: [3-4 idées JP] } — chaque joueur ne voit QUE les idées écrites
+   pour SON personnage, dans SA langue (demande de Julien, 2026-11-20).
+   Le bouton n'apparaît que si des suggestions existent pour le tour en
+   cours et pour le joueur affiché ; un tour sans suggestions = pas de
+   bouton. L'état du panneau (ouvert, idées touchées, petit mot) vit ici,
+   jamais dans la base : il survit aux re-rendus, repart à zéro à chaque
+   nouveau tour ou changement de joueur. */
+var SUGG = { key: null, open: false, sel: [], free: "" };
+/* Brouillon de chaque champ d'action, conservé hors du DOM : les
+   interactions du panneau (ouvrir, toucher une idée) re-rendent la page,
+   et le texte déjà tapé par le joueur ne doit jamais être perdu. */
+var COMPOSER_DRAFTS = {};
+function suggState() {
+  var k = (DB && DB.state ? DB.state.turn : "?") + ":" + (me || "?");
+  if (SUGG.key !== k) SUGG = { key: k, open: false, sel: [], free: "" };
+  return SUGG;
+}
+function suggList() {
+  if (!DB || !DB.state || !me) return null;
+  var s = DB.state.suggestions;
+  if (!s || s.turn !== DB.state.turn) return null;
+  var arr = s[me];
+  if (!Array.isArray(arr)) return null;
+  arr = arr.filter(function (x) { return typeof x === "string" && x.trim(); });
+  return arr.length ? arr : null;
+}
+function suggSentence(t) {
+  t = String(t || "").trim();
+  if (!t) return "";
+  return /[.!?…。！？]$/.test(t) ? t : t + ".";
+}
+function composeSuggText() {
+  var st = suggState(), list = suggList() || [];
+  var parts = st.sel.slice().sort(function (x, y) { return x - y; }).map(function (i) { return suggSentence(list[i]); }).filter(Boolean);
+  var out = parts.join(" ");
+  var free = st.free.trim();
+  if (free) out = out ? out + " " + free : free;
+  return out;
+}
+function suggHTML(ids) {
+  var list = suggList();
+  if (!list) return "";
+  var st = suggState();
+  var h = '<div style="margin-top:8px"><button type="button" class="btn sugg-toggle" id="' + ids.text + 'SuggBtn">✦ ' + esc(T("suggBtn")) + "</button></div>";
+  if (!st.open) return h;
+  h += '<div class="sugg-panel" id="' + ids.text + 'SuggPanel"><div class="sugg-title">' + esc(T("suggTitle")) + '</div><div class="sugg-hint">' + esc(T("suggHint")) + "</div>";
+  h += list.map(function (t, i) {
+    var on = st.sel.indexOf(i) >= 0;
+    var fun = i === list.length - 1;
+    return '<button type="button" class="sugg-chip' + (fun ? " fun" : "") + (on ? " sel" : "") + '" data-sugg="' + i + '">' + (on ? "✓ " : "") + esc(t) + "</button>";
+  }).join("");
+  h += '<input type="text" class="sugg-free" id="' + ids.text + 'SuggFree" placeholder="' + esc(T("suggFreePh")) + '" value="' + esc(st.free) + '">';
+  var composed = composeSuggText();
+  h += '<div class="sugg-preview" id="' + ids.text + 'SuggPrev"' + (composed ? "" : ' style="display:none"') + "><strong>" + esc(T("suggYours")) + '</strong> <span class="sugg-preview-body">' + esc(composed) + "</span></div>";
+  h += '<div style="text-align:right;margin-top:8px"><button type="button" class="btn sugg-insert" id="' + ids.text + 'SuggInsert">' + esc(T("suggInsert")) + "</button></div></div>";
+  return h;
+}
+function bindSuggestions(ids) {
+  var st = suggState();
+  var toggle = $(ids.text + "SuggBtn");
+  if (toggle) toggle.addEventListener("click", function () { st.open = !st.open; render(); });
+  if (!st.open) return;
+  Array.prototype.forEach.call(document.querySelectorAll("#" + ids.text + "SuggPanel [data-sugg]"), function (b) {
+    b.addEventListener("click", function () {
+      var freeEl = $(ids.text + "SuggFree"); if (freeEl) st.free = freeEl.value;
+      var i = parseInt(b.getAttribute("data-sugg"), 10);
+      var p = st.sel.indexOf(i);
+      if (p >= 0) st.sel.splice(p, 1);
+      else if (st.sel.length < 2) st.sel.push(i);
+      render();
+    });
+  });
+  var free = $(ids.text + "SuggFree");
+  if (free) free.addEventListener("input", function () {
+    st.free = free.value;
+    var composed = composeSuggText();
+    Array.prototype.forEach.call(document.querySelectorAll(".sugg-preview"), function (pv) {
+      pv.style.display = composed ? "" : "none";
+      var body = pv.querySelector(".sugg-preview-body");
+      if (body) body.textContent = composed;
+    });
+  });
+  var ins = $(ids.text + "SuggInsert");
+  if (ins) ins.addEventListener("click", function () {
+    var composed = composeSuggText();
+    if (!composed) return;
+    var ta = $(ids.text);
+    if (ta) { var cur = ta.value.trim(); ta.value = cur ? cur + " " + composed : composed; COMPOSER_DRAFTS[ids.text] = ta.value; }
+    st.open = false; st.sel = []; st.free = "";
+    var panel = $(ids.text + "SuggPanel");
+    if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+    if (ta) { ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }
+  });
+}
+
 /* Titre du bloc d'action : le libellé i18n ne porte plus aucun numéro figé,
    on lui ajoute le tour EN COURS (state.turn) — jamais le dernier tour résolu. */
 function composerTitle() {
@@ -1074,13 +1173,16 @@ function bindHome() {
 /* Liaison d'un formulaire d'action (bloc d'origine ou copie du haut).
    Après l'envoi, loadActions() + render() ré-affichent les deux blocs. */
 function bindComposer(ids) {
+  bindSuggestions(ids);
+  var ta0 = $(ids.text);
+  if (ta0) ta0.addEventListener("input", function () { COMPOSER_DRAFTS[ids.text] = ta0.value; });
   var send = $(ids.send);
   if (!send) return;
   send.addEventListener("click", function () {
     var txt = ($(ids.text).value || "").trim(); if (!txt) return;
     send.disabled = true; send.textContent = X("sending");
     sbPost("player_actions", { turn_number: DB.state.turn, trainer_slug: me, text: txt, status: "received" })
-      .then(function () { return loadActions(); })
+      .then(function () { delete COMPOSER_DRAFTS[ids.text]; return loadActions(); })
       .then(function () { render(); })
       .catch(function () { send.disabled = false; send.textContent = T("send"); $(ids.msg).innerHTML = '<div class="sent-ok" style="background:#fdecec;border-color:var(--red);color:#7f1d1d">' + esc(X("sendFail")) + "</div>"; });
   });
