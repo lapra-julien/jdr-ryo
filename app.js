@@ -1250,8 +1250,11 @@ function learnsetSection(p, ls) {
    Les espèces locales validées gardent TOUJOURS la priorité (choix de partie). */
 var LS_AUTO = {};
 var LS_AUTO_STATE = {};   /* espèce FR -> "loading" | "done" | "error" */
-var LS_CACHE_KEY = "jdr-ryo-learnsets-v1";
-var VG_PRIORITY = ["scarlet-violet", "legends-arceus", "brilliant-diamond-shining-pearl", "sword-shield", "lets-go-pikachu-lets-go-eevee", "ultra-sun-ultra-moon", "sun-moon", "omega-ruby-alpha-sapphire", "x-y", "black-2-white-2", "black-white", "heartgold-soulsilver", "platinum", "diamond-pearl", "firered-leafgreen", "emerald", "ruby-sapphire", "crystal", "gold-silver", "yellow", "red-blue"];
+var LS_CACHE_KEY = "jdr-ryo-learnsets-v2";
+/* Jeux principaux d'abord, spin-off en dernier recours (règle de Julien, 2026-11-20 :
+   jamais de liste issue d'un spin-off comme Légendes : Arceus si un jeu principal a la
+   donnée — cas Togepi, qui perdait Métronome dans la liste Légendes : Arceus). */
+var VG_PRIORITY = ["scarlet-violet", "brilliant-diamond-shining-pearl", "sword-shield", "lets-go-pikachu-lets-go-eevee", "ultra-sun-ultra-moon", "sun-moon", "omega-ruby-alpha-sapphire", "x-y", "black-2-white-2", "black-white", "heartgold-soulsilver", "platinum", "diamond-pearl", "firered-leafgreen", "emerald", "ruby-sapphire", "crystal", "gold-silver", "yellow", "red-blue", "legends-arceus"];
 var TYPE_EN_FR = { normal: "Normal", fighting: "Combat", flying: "Vol", poison: "Poison", ground: "Sol", rock: "Roche", bug: "Insecte", ghost: "Spectre", steel: "Acier", fire: "Feu", water: "Eau", grass: "Plante", electric: "Électrik", psychic: "Psy", ice: "Glace", dragon: "Dragon", dark: "Ténèbres", fairy: "Fée" };
 function lsCacheRead() { try { return JSON.parse(localStorage.getItem(LS_CACHE_KEY) || "{}"); } catch (e) { return {}; } }
 function lsCacheWrite(dex, ls) { try { var c = lsCacheRead(); c[dex] = ls; localStorage.setItem(LS_CACHE_KEY, JSON.stringify(c)); } catch (e) {} }
