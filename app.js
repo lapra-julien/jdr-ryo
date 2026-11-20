@@ -961,15 +961,9 @@ function resoHomeText(txt) {
     return !/^Détails techniques\b/.test(t) && !/^技術詳細/.test(t);
   }).join("\n\n");
 }
-/* Résolution d'accueil en extrait façon démo : 3 premiers paragraphes
-   visibles, le reste replié derrière « Lire la résolution complète ». */
-function resoExcerptHTML(txt) {
-  var ps = String(txt).split(/\n\s*\n/).map(function (p) { return p.trim(); }).filter(Boolean);
-  if (ps.length <= 3) return '<div class="reso-text">' + esc(txt) + "</div>";
-  return '<div class="reso-text" id="resoHomeTxt">' + esc(ps.slice(0, 3).join("\n\n")) +
-    '<span class="more" hidden>' + esc("\n\n" + ps.slice(3).join("\n\n")) + "</span></div>" +
-    '<button type="button" class="linkbtn" id="resoMoreBtn">' + esc(T("readmore")) + "</button>";
-}
+/* Résolution d'accueil affichée EN ENTIER, par défaut (demande de Julien,
+   2026-11-20 : plus d'extrait ni de bouton « Lire la résolution complète » —
+   on risquait de manquer des informations en oubliant de dérouler). */
 
 function viewHome() {
   var st = DB.state, reso = lastReso();
@@ -1039,7 +1033,7 @@ function viewHome() {
     var resoTxt = pick(reso.text);
     h += '<div id="resoBox" style="margin-top:12px">';
     if (!dice.length || allRolled) {
-      h += resoTxt ? resoExcerptHTML(resoHomeText(resoTxt)) : '<p class="muted">' + esc(X("noJpReso")) + "</p>";
+      h += resoTxt ? '<div class="reso-text">' + esc(resoHomeText(resoTxt)) + "</div>" : '<p class="muted">' + esc(X("noJpReso")) + "</p>";
     } else {
       h += '<div class="lock-note">🔒 ' + esc(T("diceIntro")) + '</div><div class="reso-text locked-box" aria-hidden="true">' + esc(resoTxt || X("noJpReso")) + "</div>";
     }
@@ -1156,14 +1150,6 @@ function bindHome() {
     var reso = lastReso(); var dice = diceOf(reso); var stDice = diceState(reso.turn);
     var pending = dice.map(function (d, i) { return i; }).filter(function (i) { return !stDice[i]; });
     pending.forEach(function (i, k) { setTimeout(function () { rollDie(i); }, k * 180); });
-  });
-  var mb = $("resoMoreBtn");
-  if (mb) mb.addEventListener("click", function () {
-    var m = document.querySelector("#resoHomeTxt .more");
-    if (!m) return;
-    var open = m.hidden;
-    m.hidden = !open;
-    mb.textContent = open ? T("readless") : T("readmore");
   });
   var rb = $("refreshBtn");
   if (rb) rb.addEventListener("click", function () { location.reload(); });
