@@ -1217,7 +1217,7 @@ function learnsetSection(p, ls) {
       '<span class="ls-type" style="background:' + typeColor(a.type) + ";color:" + typeInk(a.type) + '">' + esc(typeName(a.type)) + "</span>" +
       (ok ? '<span class="ls-ok">✓</span>' : "");
     return ok
-      ? '<button type="button" class="ls-row" data-move="' + esc(spFr(a.name)) + '" data-type="' + esc(a.type) + '">' + inner + "</button>"
+      ? '<button type="button" class="ls-row" data-move="' + esc(spFr(a.name)) + '" data-type="' + esc(a.type) + '" data-lvl="' + p.level + '">' + inner + "</button>"
       : '<div class="ls-row locked">' + inner + "</div>";
   }).join("");
   return '<h3 style="margin-top:14px">' + esc(X("learnsetTitle")) + ' <span class="ls-count">' + known + " / " + ls.length + " " + esc(T("knownLbl")) + "</span></h3>" +
@@ -1236,7 +1236,7 @@ function learnsetSection(p, ls) {
    Les espèces locales validées gardent TOUJOURS la priorité (choix de partie). */
 var LS_AUTO = {};
 var LS_AUTO_STATE = {};   /* espèce FR -> "loading" | "done" | "error" */
-var LS_CACHE_KEY = "jdr-ryo-learnsets-v2";
+var LS_CACHE_KEY = "jdr-ryo-learnsets-v3";   /* v3 : re-résolution unique pour récolter aussi les détails d'attaques (voir mvHarvest) */
 /* Jeux principaux d'abord, spin-off en dernier recours (règle de Julien, 2026-11-20 :
    jamais de liste issue d'un spin-off comme Légendes : Arceus si un jeu principal a la
    donnée — cas Togepi, qui perdait Métronome dans la liste Légendes : Arceus). */
@@ -1281,11 +1281,79 @@ function resolveLearnset(dex) {
         var fr = pokeName(mv.names, ["fr"]);
         if (!fr) return null;
         var jp = pokeName(mv.names, ["ja-Hrkt", "ja"]) || fr;
+        mvHarvest(mv, fr, jp);   /* détails officiels de l'attaque récoltés au passage (fiche d'attaque complète) */
         var tEn = mv.type && mv.type.name;
         return { n: e.n, name: { fr: fr, jp: jp }, type: TYPE_EN_FR[tEn] || (tEn ? tEn.charAt(0).toUpperCase() + tEn.slice(1) : "Normal") };
       });
     })).then(function (list) { return list.filter(Boolean); });
   });
+}
+/* ============ Détails d'attaques automatiques (espèces résolues via PokeAPI) ============
+   Même principe que les learnsets : quand l'appli résout une espèce via PokeAPI, elle
+   récolte au passage les données officielles de chaque attaque (puissance, précision,
+   catégorie, PP, effet structuré FR/JP) et les garde dans un cache local. La base
+   embarquée (data-moves.js, générée pour toutes les attaques en jeu) reste prioritaire ;
+   ce cache ne sert que pour les attaques qu'elle ne couvre pas encore. */
+var MV_CACHE_KEY = "jdr-ryo-movedb-v1";
+function mvCacheRead() { try { return JSON.parse(localStorage.getItem(MV_CACHE_KEY) || "{}"); } catch (e) { return {}; } }
+function mvCacheWrite(nameFr, entry) { try { var c = mvCacheRead(); if (!c[nameFr]) { c[nameFr] = entry; localStorage.setItem(MV_CACHE_KEY, JSON.stringify(c)); } } catch (e) {} }
+var AIL_JS = { paralysis: ["paralyser", "まひさせる"], poison: ["empoisonner", "どく状態にする"], "badly-poisoned": ["gravement empoisonner", "もうどく状態にする"], burn: ["brûler", "やけどにさせる"], sleep: ["endormir", "ねむりにさせる"], freeze: ["geler", "こおりにさせる"], confusion: ["rendre confus", "こんらんさせる"], infatuation: ["rendre amoureux", "メロメロにさせる"] };
+var STAT_JS = { attack: ["l'Attaque", "攻撃"], defense: ["la Défense", "防御"], "special-attack": ["l'Attaque Spéciale", "特攻"], "special-defense": ["la Défense Spéciale", "特防"], speed: ["la Vitesse", "素早さ"], accuracy: ["la Précision", "命中率"], evasion: ["l'Esquive", "回避率"] };
+var CAT_EN_FR = { physical: "Physique", special: "Spéciale", status: "Statut" };
+function mvSummary(mv) {
+  var meta = mv.meta || {}, fr = [], jp = [];
+  var ail = meta.ailment && meta.ailment.name;
+  var ch = mv.effect_chance || meta.ailment_chance || null;
+  if (ail && ail !== "none" && AIL_JS[ail]) {
+    if (ch && ch < 100) { fr.push("Peut " + AIL_JS[ail][0] + " la cible (" + ch + " %)."); jp.push(ch + "％で相手を" + AIL_JS[ail][1] + "ことがある。"); }
+    else { var v = AIL_JS[ail][0]; fr.push(v.charAt(0).toUpperCase() + v.slice(1) + " la cible."); jp.push("相手を" + AIL_JS[ail][1] + "。"); }
+  }
+  (mv.stat_changes || []).forEach(function (s) {
+    var st = STAT_JS[s.stat.name]; if (!st) return;
+    var up = s.change > 0, n = Math.abs(s.change), user = (mv.target && mv.target.name === "user");
+    var sc = mv.effect_chance || meta.stat_chance || null;
+    if (sc && sc < 100) { fr.push("Peut " + (up ? "augmenter" : "baisser") + " " + st[0] + (user ? " du lanceur" : " de la cible") + " de " + n + " cran" + (n > 1 ? "s" : "") + " (" + sc + " %)."); jp.push(sc + "％で" + (user ? "自分" : "相手") + "の" + st[1] + "が" + n + "段階" + (up ? "上がる" : "下がる") + "ことがある。"); }
+    else { fr.push((up ? "Augmente " : "Baisse ") + st[0] + (user ? " du lanceur" : " de la cible") + " de " + n + " cran" + (n > 1 ? "s" : "") + "."); jp.push((user ? "自分" : "相手") + "の" + st[1] + "が" + n + "段階" + (up ? "上がる" : "下がる") + "。"); }
+  });
+  if (meta.drain) { fr.push("Absorbe " + meta.drain + " % des dégâts infligés en PV."); jp.push("与えたダメージの" + meta.drain + "％を吸収して回復する。"); }
+  if (meta.healing) { fr.push("Restaure " + meta.healing + " % des PV max du lanceur."); jp.push("自分の最大HPの" + meta.healing + "％を回復する。"); }
+  if (meta.crit_rate) { fr.push("Taux de critiques élevé."); jp.push("急所に当たりやすい。"); }
+  if (meta.flinch_chance) { fr.push("Peut apeurer la cible (" + meta.flinch_chance + " %)."); jp.push(meta.flinch_chance + "％で相手をひるませることがある。"); }
+  if (mv.priority > 0) { fr.push("Attaque prioritaire (+" + mv.priority + ")."); jp.push("先制技（優先度+" + mv.priority + "）。"); }
+  if (!fr.length) {
+    if (mv.power) { fr.push("Sans effet additionnel."); jp.push("追加効果なし。"); }
+    else { var en = ""; (mv.effect_entries || []).forEach(function (ee) { if (ee.language && ee.language.name === "en") en = ee.short_effect || ""; }); fr.push(en || "Effet spécial : voir le MJ."); jp.push(en || "特殊な効果：GMに確認。"); }
+  }
+  return { fr: fr.join(" "), jp: jp.join("") };
+}
+function mvHarvest(mv, frName, jpName) {
+  if (!frName || (window.MOVE_DB || {})[frName]) return;
+  var tEn = mv.type && mv.type.name;
+  mvCacheWrite(frName, { t: TYPE_EN_FR[tEn] || "Normal", p: (mv.power == null ? "—" : mv.power), a: (mv.accuracy == null ? "—" : mv.accuracy), c: CAT_EN_FR[mv.damage_class && mv.damage_class.name] || "Statut", pp: mv.pp, e: mvSummary(mv) });
+}
+function moveDbOf(nameFr) { return (window.MOVE_DB || {})[nameFr] || mvCacheRead()[nameFr] || null; }
+function catName(cFr) { if (lang !== "jp") return cFr; return ({ "Physique": "物理", "Spéciale": "特殊", "Statut": "変化" })[cFr] || cFr; }
+/* Ligne « Dans notre JDR » : formule de dégâts de la campagne (décision n°43) calculée
+   pour le niveau du Pokémon qui regarde la fiche ; bandes de réussite pour les statuts. */
+function moveJdrText(db, lvl) {
+  var note = db && db.j ? (lang === "jp" ? db.j.jp : db.j.fr) : null;
+  var band = lang === "jp" ? "成功で効果そのまま、部分成功では弱まるか短時間、失敗では何も起きない。" : "sur une réussite, l'effet s'applique pleinement ; sur une réussite partielle, il est réduit ou bref ; sur un échec, rien ne se passe.";
+  if (!db) return (lang === "jp" ? "ステータス変化技：" : "Attaque de statut : ") + band;
+  if (typeof db.p === "number") {
+    var base = Math.floor(db.p / 10);
+    var die = lvl ? (lvl <= 10 ? "d4" : lvl <= 20 ? "d6" : "d8") : null;
+    var s = lang === "jp"
+      ? "ダメージ：" + base + " + " + (die ? die + "（Lv" + lvl + "）" : "レベルによるダイス（d4：Lv1-10、d6：Lv11-20、d8：Lv21+）") + "。成功でフルダメージ、部分成功で半分、クリティカル（自然20）で最大値。タイプ相性（×2 / ÷2）はそのあと適用。"
+      : "Dégâts : " + base + " + " + (die ? die + " (niv. " + lvl + ")" : "dé selon le niveau (d4 niv. 1-10, d6 niv. 11-20, d8 niv. 21+)") + ". Réussite = pleins dégâts, réussite partielle = moitié, critique (20 naturel) = maximum ; l'efficacité de type (×2 ou ÷2) s'applique ensuite.";
+    return note ? s + " " + note : s;
+  }
+  if (db.p === "variable") {
+    var v = lang === "jp" ? "威力は可変（公式の効果を参照）：このTRPGでは、GMがその場の状況で威力を決める。" : "Puissance variable (voir l'effet officiel) : dans notre JDR, le MJ la détermine selon la situation au moment du combat.";
+    return note ? v + " " + note : v;
+  }
+  if (db.c === "Statut") return (lang === "jp" ? "ステータス変化技：" : "Attaque de statut : ") + band + (note ? " " + note : "");
+  var sp = lang === "jp" ? "特殊なダメージ：公式の効果（上記）に従い、GMが裁定する。" : "Dégâts spéciaux : ils suivent l'effet officiel ci-dessus, arbitrés par le MJ.";
+  return note ? sp + " " + note : sp;
 }
 function ensureLearnset(p) {
   var spF = spFr(p.species), dex = p.dex;
@@ -1381,27 +1449,20 @@ function openSheet(html) {
 }
 var sheetPokeId = null;   /* id du Pokémon dont la fiche est ouverte (suivi pour la résolution auto) */
 function closeSheet() { sheetPokeId = null; var s = $("sheet"); if (s) s.remove(); }
-function moveSheet(nameFr, typeFr) {
+function moveSheet(nameFr, typeFr, lvl) {
   sheetPokeId = null;   /* la fiche d'attaque remplace la fiche Pokémon : plus de ré-affichage auto */
-  var db = (window.MOVE_DB || {})[nameFr];
+  var db = moveDbOf(nameFr);
   var nm = moveDisplayName(nameFr);
-  var effOff = db ? (lang === "jp" ? db.e.jp : db.e.fr) : null;
-  var jdr;
-  if (!db || db.p == null) {
-    jdr = lang === "jp" ? "ステータス変化技：成功で公式の効果がそのまま適用され、部分成功では効果が弱まるか短時間だけ続き、失敗では何も起きない。"
-      : "Attaque de statut : sur une réussite, l'effet officiel s'applique pleinement ; sur une réussite partielle, il est réduit ou bref ; sur un échec, rien ne se passe.";
-  } else {
-    var tier = db.p <= 40 ? 0 : db.p <= 70 ? 1 : db.p <= 100 ? 2 : 3;
-    var tiersFr = ["faibles", "moyens", "forts", "très forts"], tiersJp = ["小さい", "中くらい", "大きい", "とても大きい"];
-    jdr = lang === "jp"
-      ? "ダメージは" + tiersJp[tier] + "（威力" + db.p + "）。成功でフルダメージ、部分成功で軽減、失敗で当たらないか効果なし。"
-      : "Dégâts " + tiersFr[tier] + " (puissance " + db.p + ") : réussite = pleins dégâts, réussite partielle = dégâts réduits, échec = l'attaque manque son effet.";
-  }
+  var effOff = db && db.e ? (lang === "jp" ? db.e.jp : db.e.fr) : null;
+  var jdr = moveJdrText(db, lvl);
   openSheet('<button type="button" class="btn blue" data-close="1">' + esc(T("closeLbl")) + "</button>" +
     '<h2 style="margin-top:10px">' + esc(nm) + '</h2>' +
     '<span class="move-pill" style="background:' + typeColor(typeFr) + ";color:" + typeInk(typeFr) + '">' + esc(typeName(typeFr)) + "</span>" +
     '<table class="kv" style="margin-top:10px">' +
-    (db ? "<tr><th>" + esc(T("powLbl")) + "</th><td>" + (db.p == null ? "—" : db.p) + "</td></tr><tr><th>" + esc(T("accLbl")) + "</th><td>" + (db.a == null ? "—" : db.a + " %") + "</td></tr>" : "") +
+    (db ? "<tr><th>" + esc(T("powLbl")) + "</th><td>" + (db.p == null ? "—" : db.p) + "</td></tr>" +
+      "<tr><th>" + esc(T("accLbl")) + "</th><td>" + (db.a == null || db.a === "—" ? "—" : db.a + " %") + "</td></tr>" +
+      (db.c ? "<tr><th>" + esc(T("catLbl")) + "</th><td>" + esc(catName(db.c)) + "</td></tr>" : "") +
+      (db.pp ? "<tr><th>" + esc(T("ppLbl")) + "</th><td>" + db.pp + "</td></tr>" : "") : "") +
     "<tr><th>" + esc(T("offEffLbl")) + "</th><td>" + esc(effOff || X("noText")) + "</td></tr>" +
     "<tr><th>" + esc(T("jdrLbl")) + "</th><td>" + esc(jdr) + "</td></tr></table>");
   bindSheet();
@@ -1426,7 +1487,7 @@ function pokeSheet(p) {
     (note ? "<tr><th>" + esc(T("statusLbl")) + "</th><td>" + esc(note) + "</td></tr>" : "") + "</table>" +
     '<h3 style="margin-top:12px">' + esc(T("movesTitle")) + ' <span class="muted small">(' + esc(T("tapMoveHint")) + ')</span></h3><div class="move-pills">' +
     moves.map(function (m) {
-      return '<button type="button" class="move-pill" data-move="' + esc(m.nameFr) + '" data-type="' + esc(m.type) + '" style="background:' + typeColor(m.type) + ";color:" + typeInk(m.type) + '">' + esc(moveDisplayName(m)) + (m.lvl ? " <small>" + esc(T("learnAtLbl")) + " " + m.lvl + "</small>" : "") + "</button>";
+      return '<button type="button" class="move-pill" data-move="' + esc(m.nameFr) + '" data-type="' + esc(m.type) + '" data-lvl="' + p.level + '" style="background:' + typeColor(m.type) + ";color:" + typeInk(m.type) + '">' + esc(moveDisplayName(m)) + (m.lvl ? " <small>" + esc(T("learnAtLbl")) + " " + m.lvl + "</small>" : "") + "</button>";
     }).join("") + "</div>" +
     learnsetBlock(p);
   openSheet(html); bindSheet();
@@ -1437,7 +1498,7 @@ function bindSheet() {
   var box = $("sheet"); if (!box) return;
   Array.prototype.forEach.call(box.querySelectorAll("[data-close]"), function (b) { b.addEventListener("click", closeSheet); });
   Array.prototype.forEach.call(box.querySelectorAll("[data-move]"), function (b) {
-    b.addEventListener("click", function () { moveSheet(b.getAttribute("data-move"), b.getAttribute("data-type")); });
+    b.addEventListener("click", function () { moveSheet(b.getAttribute("data-move"), b.getAttribute("data-type"), parseInt(b.getAttribute("data-lvl"), 10) || null); });
   });
 }
 function bindTeams() {
