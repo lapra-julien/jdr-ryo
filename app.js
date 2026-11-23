@@ -1334,9 +1334,22 @@ function mvHarvest(mv, frName, jpName) {
 function moveDbOf(nameFr) { return (window.MOVE_DB || {})[nameFr] || mvCacheRead()[nameFr] || null; }
 function catName(cFr) { if (lang !== "jp") return cFr; return ({ "Physique": "物理", "Spéciale": "特殊", "Statut": "変化" })[cFr] || cFr; }
 /* Ligne « Dans notre JDR » : formule de dégâts de la campagne (décision n°43) calculée
-   pour le niveau du Pokémon qui regarde la fiche ; bandes de réussite pour les statuts. */
+   pour le niveau du Pokémon qui regarde la fiche ; bandes de réussite pour les statuts ;
+   seuil de touche calé sur la précision des jeux (décision n°46, 2026-11-23). */
 function moveJdrText(db, lvl) {
   var note = db && db.j ? (lang === "jp" ? db.j.jp : db.j.fr) : null;
+  var hit = "";
+  if (db && typeof db.a === "number") {
+    var seuil = 24 - Math.floor(db.a / 5);
+    var pLo = Math.max(2, seuil - 3), pHi = seuil - 1;
+    hit = lang === "jp"
+      ? "命中判定（決定46）：d20で" + seuil + "以上が成功、" + pLo + "–" + pHi + "は部分成功、自然1は失敗。"
+      : "Touche (décision n°46) : d20 ≥ " + seuil + " = réussite, " + pLo + "–" + pHi + " = partielle, 1 naturel = raté. ";
+  } else if (db && (db.a === "—" || db.a == null)) {
+    hit = lang === "jp"
+      ? "命中判定（決定46）：必中技——自然1のときだけ失敗し、命中率ダウンの影響を受けない。"
+      : "Touche (décision n°46) : attaque qui ne rate jamais — seul un 1 naturel la fait échouer, et elle ignore les baisses de Précision. ";
+  }
   var band = lang === "jp" ? "成功で効果そのまま、部分成功では弱まるか短時間、失敗では何も起きない。" : "sur une réussite, l'effet s'applique pleinement ; sur une réussite partielle, il est réduit ou bref ; sur un échec, rien ne se passe.";
   if (!db) return (lang === "jp" ? "ステータス変化技：" : "Attaque de statut : ") + band;
   if (typeof db.p === "number") {
@@ -1345,15 +1358,15 @@ function moveJdrText(db, lvl) {
     var s = lang === "jp"
       ? "ダメージ：" + base + " + " + (die ? die + "（Lv" + lvl + "）" : "レベルによるダイス（d4：Lv1-10、d6：Lv11-20、d8：Lv21+）") + "。成功でフルダメージ、部分成功で半分、クリティカル（自然20）で最大値。タイプ相性（×2 / ÷2）はそのあと適用。"
       : "Dégâts : " + base + " + " + (die ? die + " (niv. " + lvl + ")" : "dé selon le niveau (d4 niv. 1-10, d6 niv. 11-20, d8 niv. 21+)") + ". Réussite = pleins dégâts, réussite partielle = moitié, critique (20 naturel) = maximum ; l'efficacité de type (×2 ou ÷2) s'applique ensuite.";
-    return note ? s + " " + note : s;
+    return note ? hit + s + " " + note : hit + s;
   }
   if (db.p === "variable") {
     var v = lang === "jp" ? "威力は可変（公式の効果を参照）：このTRPGでは、GMがその場の状況で威力を決める。" : "Puissance variable (voir l'effet officiel) : dans notre JDR, le MJ la détermine selon la situation au moment du combat.";
-    return note ? v + " " + note : v;
+    return note ? hit + v + " " + note : hit + v;
   }
-  if (db.c === "Statut") return (lang === "jp" ? "ステータス変化技：" : "Attaque de statut : ") + band + (note ? " " + note : "");
+  if (db.c === "Statut") return hit + (lang === "jp" ? "ステータス変化技：" : "Attaque de statut : ") + band + (note ? " " + note : "");
   var sp = lang === "jp" ? "特殊なダメージ：公式の効果（上記）に従い、GMが裁定する。" : "Dégâts spéciaux : ils suivent l'effet officiel ci-dessus, arbitrés par le MJ.";
-  return note ? sp + " " + note : sp;
+  return note ? hit + sp + " " + note : hit + sp;
 }
 function ensureLearnset(p) {
   var spF = spFr(p.species), dex = p.dex;
