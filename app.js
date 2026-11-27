@@ -524,6 +524,22 @@ function hpBar(p) {
 }
 
 /* ================= Accueil ================= */
+/* Période de la journée déduite de l'horloge publiée par le MJ
+   (game_state.data.clock, texte FR + JP) : pilote l'éclairage de
+   l'illustration du lieu (variantes -matin / -crepuscule / -nuit à côté
+   de l'image de jour dans assets/lieux/). Aucune donnée nouvelle : le MJ
+   écrit déjà la période dans l'horloge à chaque résolution. */
+function dayPart() {
+  var clk = (DB.state && DB.state.clock) || "";
+  var txt = (typeof clk === "string" ? clk : ((clk.fr || "") + " " + (clk.jp || ""))).toLowerCase();
+  if (/nuit|minuit|深夜|真夜中|夜中/.test(txt)) return "nuit";
+  if (/crépuscule|crepuscule|coucher|soir|夕方|夕暮|夕/.test(txt)) return "crepuscule";
+  if (/matin|aube|朝|早朝/.test(txt)) return "matin";
+  if (/midi|après-midi|apres-midi|昼/.test(txt)) return "jour";
+  var m = txt.match(/(\d{1,2})\s*(?:h|時)/);
+  if (m) { var hh = parseInt(m[1], 10); if (hh >= 20 || hh < 5) return "nuit"; if (hh >= 17) return "crepuscule"; if (hh >= 5 && hh < 10) return "matin"; return "jour"; }
+  return "jour";
+}
 function placeBlock() {
   var st = DB.state, map = st.map || {};
   var here = (map.places || []).filter(function (p) { return p.state === "here"; })[0];
@@ -533,7 +549,10 @@ function placeBlock() {
   function imgFor(pid, who) {
     var src = imgs[pid];
     if (!src) return '<div class="lock-note">' + esc(X("noPlaceImg")) + "</div>";
-    return '<div><img class="place-img" src="' + esc(src) + '" alt=""><div class="place-cap">' + esc(who) + "</div></div>";
+    var per = dayPart(), disp = src;
+    if (per !== "jour" && /\.webp($|\?)/.test(src)) disp = src.replace(/\.webp/, "-" + per + ".webp");
+    var err = disp !== src ? ' onerror="this.onerror=null;this.src=\'' + esc(src) + '\'"' : "";
+    return '<div><img class="place-img" src="' + esc(disp) + '"' + err + ' alt=""><div class="place-cap">' + esc(who) + "</div></div>";
   }
   if (together) {
     var nm = here ? pick(here) : null;
