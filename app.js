@@ -1418,6 +1418,19 @@ function benchHTML(c) {
   if (!chips.length) return "";
   return '<div class="bench"><div class="bench-title">' + (lang === "jp" ? "ベンチ" : "Bancs") + "</div>" + chips.join("") + "</div>";
 }
+/* Anti-spoiler (demande de Julien, 2026-11-27) : comme le texte de la
+   résolution, l'état du combat reste caché tant que le joueur local n'a
+   pas lancé tous les dés du dernier tour — les PV affichés révéleraient
+   l'issue du round avant la lecture. Le verrou est strictement local
+   (diceState est par joueur et par appareil). */
+function combatLocked() {
+  var reso = lastReso();
+  if (!reso) return false;
+  var dice = diceOf(reso);
+  if (!dice.length) return false;
+  var st = diceState(reso.turn);
+  return !dice.every(function (d, i) { return st[i]; });
+}
 function combatHTML() {
   var c = combatData();
   if (!c) return "";
@@ -1441,16 +1454,21 @@ function combatHTML() {
     });
   });
   var fc = foeCorners(c);
+  var locked = combatLocked();
+  if (locked) COMBAT_PENDING = []; /* aucun son ne doit fuiter avant les dés */
   var h = '<section class="card combat-card" id="combatSection">' +
     '<div class="combat-head"><h2 class="combat-title">' + esc(title) + "</h2>" +
     (sub ? '<div class="combat-sub">' + esc(sub) + "</div>" : "") +
     '<button type="button" class="sound-btn" id="soundBtn" aria-label="Son">' + (soundOn ? "🔊" : "🔇") + "</button></div>" +
+    '<div class="combat-stage' + (locked ? " locked" : "") + '">' +
     '<div class="arena' + (night ? " night" : "") + '">' +
     '<div class="cornerbar">' + (fc[0] || '<div class="corner ghost"></div>') + (fc[1] || '<div class="corner ghost"></div>') + "</div>" +
     '<div class="crow foes">' + foes + "</div>" +
     '<div class="crow allies">' + allies + "</div>" +
     '<div class="cornerbar">' + playerCorner(me, c) + playerCorner(other, c) + "</div>" +
-    "</div>" + benchHTML(c) + "</section>";
+    "</div>" + benchHTML(c) +
+    (locked ? '<div class="combat-lock-note"><span>🔒 ' + esc(lang === "jp" ? "ダイスを振ると、戦闘の様子が見られます" : "Lance les dés du tour pour découvrir l'état du combat") + "</span></div>" : "") +
+    "</div></section>";
   return h;
 }
 function arenaSignature() {
@@ -1459,14 +1477,14 @@ function arenaSignature() {
   var ids = [];
   ["julien", "ryo"].forEach(function (slug) { (((c.onField || {})[slug]) || []).forEach(function (id) { ids.push(id); }); });
   var ps = ids.map(function (id) { var p = pokeById(id); return p ? [p.id, p.hpCur, p.hpMax, p.level] : [id]; });
-  return JSON.stringify({ c: c, p: ps, me: me, lang: lang, turn: DB.state.turn });
+  return JSON.stringify({ c: c, p: ps, me: me, lang: lang, turn: DB.state.turn, lock: combatLocked() });
 }
 function animateArena() {
   Array.prototype.forEach.call(document.querySelectorAll("#combatSection .cfill[data-pct]"), function (el) {
     var pct = el.getAttribute("data-pct");
     requestAnimationFrame(function () { requestAnimationFrame(function () { el.style.width = pct + "%"; }); });
   });
-  var sounds = COMBAT_PENDING.slice();
+  var sounds = document.querySelector("#combatSection .combat-stage.locked") ? [] : COMBAT_PENDING.slice();
   COMBAT_PENDING = [];
   COMBAT_SEEN = true;
   sounds.forEach(function (s, i) { setTimeout(function () { sfx(s); }, i * 120); });

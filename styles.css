@@ -623,3 +623,19 @@ button.bchip{cursor:pointer}
 .confetti{position:absolute;top:-14px;width:9px;height:15px;border-radius:2px;z-index:1;
   animation:confFall 2.8s ease-in forwards}
 @keyframes confFall{to{transform:translateY(105vh) rotate(560deg);opacity:.85}}
+
+/* ---------- Verrou anti-spoiler de la fenêtre de combat (2026-11-27) ---------- */
+.combat-stage{position:relative}
+.combat-stage.locked .arena,
+.combat-stage.locked .bench{
+  filter:blur(9px) saturate(.55);
+  pointer-events:none;user-select:none;
+}
+.combat-lock-note{
+  position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;
+  text-align:center;padding:18px;
+}
+.combat-lock-note span{
+  background:rgba(255,248,234,.92);border:2px solid var(--ink);border-radius:999px;
+  box-shadow:0 3px 0 var(--ink);padding:8px 16px;font-weight:800;font-size:.86rem;color:var(--ink);
+}
