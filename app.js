@@ -445,6 +445,7 @@ function render() {
   else if (tab === "journal") v.innerHTML = viewJournal();
   else if (tab === "dex") v.innerHTML = viewDex();
   bindView();
+  checkBadgeCelebration();
   setupMjPolling();
 }
 
@@ -501,7 +502,7 @@ function badgesHTML(slug) {
   var got = (charOf(slug).badges) || [];
   return '<div class="badges-row">' + BADGES.map(function (b) {
     var has = got.indexOf(b.key) >= 0;
-    return '<div class="badge-cell' + (has ? "" : " off") + '"><img src="assets/badges/badge-' + b.img + '.png" alt=""><div class="bc-name">' + esc(lang === "jp" ? b.jp : b.fr) + "</div></div>";
+    return '<div class="badge-cell' + (has ? "" : " off") + '" data-badge="' + b.key + '"><img src="assets/badges/badge-' + b.img + '.png" alt=""><div class="bc-name">' + esc(lang === "jp" ? b.jp : b.fr) + "</div></div>";
   }).join("") + "</div>";
 }
 function seenDex() {
@@ -1002,6 +1003,8 @@ function viewHome() {
   h += mjCardHTML();
   /* Scène du MJ en évidence pendant le tour qui suit sa création */
   h += sceneCardHTML();
+  /* Fenêtre de combat (si le MJ a publié un état de combat actif) */
+  h += combatHTML();
   /* Phase de dés + résolution du dernier tour */
   if (reso) {
     var dice = diceOf(reso);
@@ -1113,6 +1116,7 @@ function rollDie(i) {
   setTimeout(function () {
     if (iv) clearInterval(iv);
     delete rollingNow[i];
+    sfx("de");
     var fresh = diceState(reso.turn); fresh[i] = true; saveDiceState(reso.turn, fresh);
     if (btn.isConnected) {
       if (face) face.textContent = String(d.value);
@@ -1155,6 +1159,7 @@ function bindHome() {
   if (rb) rb.addEventListener("click", function () { location.reload(); });
   bindComposer(COMPOSER_MAIN);
   bindComposer(COMPOSER_TOP);
+  bindCombat();
 }
 /* Liaison d'un formulaire d'action (bloc d'origine ou copie du haut).
    Après l'envoi, loadActions() + render() ré-affichent les deux blocs. */
@@ -1173,6 +1178,412 @@ function bindComposer(ids) {
       .catch(function () { send.disabled = false; send.textContent = T("send"); $(ids.msg).innerHTML = '<div class="sent-ok" style="background:#fdecec;border-color:var(--red);color:#7f1d1d">' + esc(X("sendFail")) + "</div>"; });
   });
 }
+
+/* ================= Fenêtre de combat =================
+   Adaptation de la fenêtre de combat de « Chant & Festin » (appli d'Axel)
+   aux données de CETTE partie — demande de Julien, 2026-11-27.
+   Contrat de données (publié par le MJ dans game_state.data.combat) :
+     { active: true, round: 1,
+       title: {fr, jp} | null,
+       foes: [ {species:{fr,jp}, dex, level, hpCur, hpMax,
+                status:{fr,jp}|null, trainer:{fr,jp}} ],
+       foeTrainers: [ {name:{fr,jp},
+                       team:[{species:{fr,jp}, dex, level, hpCur, hpMax}]} ],
+       onField: { julien: [ids pokemon], ryo: [ids pokemon] },
+       statuses: { "<id pokemon>": {fr, jp} } }
+   Les PV des alliés se lisent dans leurs fiches pokemon (mises à jour par
+   le MJ à chaque round) ; ceux des adversaires vivent dans combat.foes.
+   Règle d'or anti-clignotement : l'arène ne se re-rend que si l'empreinte
+   de TOUT ce qu'elle affiche a changé (combat, fiches des Pokémon du
+   terrain, identité et langue du joueur local). Sondage propre de 5 s
+   quand un combat est actif, en plus des resynchronisations globales. */
+
+/* ---------- Sons synthétisés (aucun fichier) ---------- */
+var AC = null, lastSfx = {};
+function sfx(name) {
+  try { if (localStorage.getItem("sonActif") === "0") return; } catch (e) {}
+  var now = (window.performance && performance.now) ? performance.now() : Date.now();
+  if (lastSfx[name] && now - lastSfx[name] < 160) return;
+  lastSfx[name] = now;
+  try {
+    var Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    AC = AC || new Ctor();
+    if (AC.state === "suspended") AC.resume();
+    var t = AC.currentTime;
+    function tone(type, f0, f1, dur, delay, vol) {
+      var o = AC.createOscillator(), g = AC.createGain(), s = t + (delay || 0);
+      o.type = type;
+      o.frequency.setValueAtTime(f0, s);
+      if (f1) o.frequency.exponentialRampToValueAtTime(Math.max(f1, 1), s + dur);
+      g.gain.setValueAtTime(vol || 0.07, s);
+      g.gain.exponentialRampToValueAtTime(0.0001, s + dur);
+      o.connect(g); g.connect(AC.destination);
+      o.start(s); o.stop(s + dur + 0.03);
+    }
+    if (name === "de") { tone("square", 440, null, .09, 0); tone("square", 587, null, .09, .08); tone("square", 880, null, .13, .16); }
+    else if (name === "touche") tone("sawtooth", 220, 55, .28, 0, .1);
+    else if (name === "ko") tone("triangle", 320, 40, .6, 0, .12);
+    else if (name === "envoi") { tone("sine", 300, 900, .25, 0); tone("sine", 1200, null, .15, .2); }
+    else if (name === "badge") { [523, 659, 784, 1046].forEach(function (f, i) { tone("square", f, null, .16, i * .11); }); tone("square", 1318, null, .35, .48); }
+    else if (name === "clic") tone("square", 660, null, .05, 0, .05);
+  } catch (e) {}
+}
+document.addEventListener("pointerdown", function () {
+  try {
+    var Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    AC = AC || new Ctor();
+    if (AC.state === "suspended") AC.resume();
+  } catch (e) {}
+});
+
+/* ---------- Sprites : chaîne de repli (dos alliés / face adversaires) ---------- */
+var SPR_BASE = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/";
+function spriteChain(dex, back, shiny) {
+  var chain = [];
+  if (back) {
+    if (shiny) { chain.push(SPR_BASE + "versions/generation-iii/ruby-sapphire/back/shiny/" + dex + ".png"); chain.push(SPR_BASE + "back/shiny/" + dex + ".png"); }
+    else { chain.push(SPR_BASE + "versions/generation-iii/ruby-sapphire/back/" + dex + ".png"); chain.push(SPR_BASE + "back/" + dex + ".png"); }
+  }
+  if (shiny) { chain.push(SPR_BASE + "versions/generation-iii/emerald/shiny/" + dex + ".png"); chain.push(SPR_BASE + "shiny/" + dex + ".png"); }
+  chain.push(spriteOf(dex));
+  chain.push(SPR_BASE + "other/official-artwork/" + (shiny ? "shiny/" : "") + dex + ".png");
+  return chain;
+}
+window.imgChainNext = function (img) {
+  var c = [];
+  try { c = JSON.parse(img.getAttribute("data-chain") || "[]"); } catch (e) {}
+  if (c.length) { img.src = c.shift(); img.setAttribute("data-chain", JSON.stringify(c)); return; }
+  img.onerror = null;
+  var d = document.createElement("div");
+  d.className = "csprite-none"; d.textContent = "❔";
+  if (img.parentNode) img.parentNode.replaceChild(d, img);
+};
+function chainImg(dex, back, shiny, cls) {
+  if (!dex) return '<div class="csprite-none">❔</div>';
+  var chain = spriteChain(dex, back, shiny);
+  return '<img class="' + cls + '" src="' + chain[0] + '" data-chain=\'' + JSON.stringify(chain.slice(1)) + '\' onerror="imgChainNext(this)" alt="">';
+}
+
+/* ---------- État de l'arène (animations et sons par comparaison) ---------- */
+var COMBAT_PREV = {};        // clé de slot -> % de PV au rendu précédent
+var COMBAT_SEEN = false;     // l'arène a déjà été montrée dans cette session
+var COMBAT_PENDING = [];     // sons à jouer après le rendu en cours
+var combatPollTimer = null;
+
+function combatData() {
+  var c = DB && DB.state && DB.state.combat;
+  return (c && c.active) ? c : null;
+}
+function pokeById(id) {
+  var arr = DB.pokemon || [];
+  for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return arr[i];
+  return null;
+}
+function hpPct(cur, max) {
+  if (!max) return 100;
+  var p = Math.round(100 * cur / max);
+  return p < 0 ? 0 : (p > 100 ? 100 : p);
+}
+function statusMeta(txt) {
+  var t = String(txt || "");
+  if (/endorm|ねむり|眠/.test(t)) return { icon: "💤", cls: "st-sleep" };
+  if (/confus|こんらん|混乱/.test(t)) return { icon: "💫", cls: "st-conf" };
+  if (/paralys|まひ|麻痺/.test(t)) return { icon: "⚡", cls: "st-para" };
+  if (/empoison|どく|毒/.test(t)) return { icon: "🧪", cls: "st-poison" };
+  if (/brûl|やけど|火傷/.test(t)) return { icon: "🔥", cls: "st-burn" };
+  if (/gel|こおり|凍/.test(t)) return { icon: "❄️", cls: "st-frost" };
+  if (/ralenti|のろい|鈍/.test(t)) return { icon: "🐌", cls: "st-slow" };
+  return { icon: "", cls: "st-def" };
+}
+function statusPillsHTML(statusObj) {
+  var txt = pick(statusObj);
+  if (!txt) return "";
+  return '<div class="status-pills">' + txt.split(/[,、，]/).map(function (s) {
+    s = s.trim(); if (!s) return "";
+    var m = statusMeta(s);
+    return '<span class="status-pill ' + m.cls + '">' + (m.icon ? m.icon + " " : "") + esc(s) + "</span>";
+  }).join("") + "</div>";
+}
+function slotAnim(key, pct) {
+  /* Compare au rendu précédent : nouveau -> pop (+ son envoi), PV en
+     baisse -> hit (+ son touche ou ko). Renvoie {cls, from} pour le slot. */
+  var prev = COMBAT_PREV[key];
+  var out = { cls: "", from: pct };
+  if (prev === undefined) {
+    out.cls = "pop";
+    if (COMBAT_SEEN) COMBAT_PENDING.push("envoi");
+  } else {
+    out.from = prev;
+    if (pct < prev) {
+      out.cls = "hit";
+      if (COMBAT_SEEN) COMBAT_PENDING.push(pct <= 0 ? "ko" : "touche");
+    }
+  }
+  COMBAT_PREV[key] = pct;
+  return out;
+}
+function hpBoxHTML(name, level, cur, max, statusObj, ownerSlug, pct, fromPct) {
+  var cls = pct > 50 ? "" : (pct > 25 ? " mid" : " low");
+  return '<div class="hpbox"><div class="hpbox-top"><span class="hpbox-name">' + esc(name) + "</span>" +
+    '<span class="hpbox-lv">' + (lang === "jp" ? "Lv." : "Niv. ") + level + "</span></div>" +
+    '<div class="cbar"><i class="cfill' + cls + '" data-pct="' + pct + '" style="width:' + fromPct + '%"></i></div>' +
+    '<div class="hpbox-num">' + X("hp") + " " + cur + "/" + max +
+    (ownerSlug ? ' · <span class="hpbox-owner">' + esc(nameOf(ownerSlug)) + "</span>" : "") + "</div>" +
+    statusPillsHTML(statusObj) + "</div>";
+}
+function foeSlotHTML(f, i) {
+  var key = "f" + i + "-" + (f.dex || 0);
+  var pct = hpPct(f.hpCur, f.hpMax);
+  var a = slotAnim(key, pct);
+  var nm = spName(f.dex, f.species) + (f.shiny ? " ✨" : "");
+  return '<div class="slot foe' + (a.cls ? " " + a.cls : "") + '">' +
+    hpBoxHTML(nm, f.level, f.hpCur, f.hpMax, f.status, null, pct, a.from) +
+    '<div class="slot-sprite">' + chainImg(f.dex, false, !!f.shiny, "csprite") + "</div></div>";
+}
+function allySlotHTML(p, slug, c) {
+  var key = "p" + p.id;
+  var pct = hpPct(p.hpCur, p.hpMax);
+  var a = slotAnim(key, pct);
+  var nm = (p.nickname && String(p.nickname).trim()) ? String(p.nickname) : spName(p.dex, p.species);
+  if (p.shiny) nm += " ✨";
+  var st = (c.statuses || {})[String(p.id)] || null;
+  return '<div class="slot ally' + (a.cls ? " " + a.cls : "") + '">' +
+    '<div class="slot-sprite">' + chainImg(p.dex, true, !!p.shiny, "csprite") + "</div>" +
+    hpBoxHTML(nm, p.level, p.hpCur, p.hpMax, st, slug, pct, a.from) + "</div>";
+}
+var BALL_URL = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png";
+function ballHTML(ko, onField, gotoSlug) {
+  return '<span class="cball' + (ko ? " ko" : "") + (onField ? " onfield" : "") + '"' +
+    (gotoSlug ? ' data-goto-team="' + gotoSlug + '" role="button"' : "") + '>' +
+    '<img src="' + BALL_URL + '" onerror="this.onerror=null;this.src=\'assets/deco-pokeball.png\'" alt=""></span>';
+}
+function cornerHTML(label, balls) {
+  if (!balls) return '<div class="corner ghost"></div>';
+  return '<div class="corner"><div class="corner-name">' + esc(label) + '</div><div class="balls">' + balls + "</div></div>";
+}
+function foeCorners(c) {
+  var groups = c.foeTrainers || [];
+  if (!groups.length && (c.foes || []).length) {
+    var byT = {}, order = [];
+    (c.foes || []).forEach(function (f) {
+      var tn = f.trainer ? (pick(f.trainer) || spFr(f.trainer)) : "?";
+      if (!byT[tn]) { byT[tn] = { name: f.trainer, team: [] }; order.push(tn); }
+      byT[tn].team.push(f);
+    });
+    groups = order.map(function (k) { return byT[k]; });
+  }
+  return groups.slice(0, 2).map(function (g) {
+    var balls = (g.team || []).map(function (tp) {
+      var onF = (c.foes || []).some(function (f) { return f.dex === tp.dex && (pick(f.trainer) || "") === (pick(g.name) || ""); });
+      return ballHTML(tp.hpCur <= 0, onF, null);
+    }).join("");
+    return cornerHTML(pick(g.name) || "?", balls);
+  });
+}
+function playerCorner(slug, c) {
+  var team = teamOf(slug, "equipe");
+  var onF = ((c.onField || {})[slug]) || [];
+  var balls = team.map(function (p) { return ballHTML(p.hpCur <= 0, onF.indexOf(p.id) >= 0, slug); }).join("");
+  return cornerHTML(nameOf(slug), balls);
+}
+function benchHTML(c) {
+  var chips = [];
+  ["julien", "ryo"].forEach(function (slug) {
+    var onF = ((c.onField || {})[slug]) || [];
+    teamOf(slug, "equipe").forEach(function (p) {
+      if (onF.indexOf(p.id) >= 0) return;
+      var pct = hpPct(p.hpCur, p.hpMax);
+      var nm = (p.nickname && String(p.nickname).trim()) ? String(p.nickname) : spName(p.dex, p.species);
+      chips.push('<button type="button" class="bchip' + (p.hpCur <= 0 ? " ko" : "") + '" data-goto-team="' + slug + '">' +
+        chainImg(p.dex, false, !!p.shiny, "bchip-img") +
+        '<span class="bchip-main"><span class="bchip-name">' + esc(nm) + " · " + (lang === "jp" ? "Lv." : "Niv. ") + p.level + "</span>" +
+        '<span class="cbar mini"><i class="cfill' + (pct > 50 ? "" : (pct > 25 ? " mid" : " low")) + '" style="width:' + pct + '%"></i></span>' +
+        '<span class="bchip-hp">' + X("hp") + " " + p.hpCur + "/" + p.hpMax + (p.hpCur <= 0 ? " · K.O." : "") + "</span></span></button>");
+    });
+  });
+  (c.foeTrainers || []).forEach(function (g) {
+    (g.team || []).forEach(function (tp) {
+      var onF = (c.foes || []).some(function (f) { return f.dex === tp.dex && (pick(f.trainer) || "") === (pick(g.name) || ""); });
+      if (onF) return;
+      var pct = hpPct(tp.hpCur, tp.hpMax);
+      chips.push('<span class="bchip foe' + (tp.hpCur <= 0 ? " ko" : "") + '">' +
+        chainImg(tp.dex, false, false, "bchip-img") +
+        '<span class="bchip-main"><span class="bchip-name">' + esc(spName(tp.dex, tp.species)) + " · " + (lang === "jp" ? "Lv." : "Niv. ") + (tp.level || "?") + "</span>" +
+        '<span class="cbar mini"><i class="cfill' + (pct > 50 ? "" : (pct > 25 ? " mid" : " low")) + '" style="width:' + pct + '%"></i></span>' +
+        '<span class="bchip-hp">' + X("hp") + " " + tp.hpCur + "/" + tp.hpMax + (tp.hpCur <= 0 ? " · K.O." : "") + "</span></span></span>");
+    });
+  });
+  if (!chips.length) return "";
+  return '<div class="bench"><div class="bench-title">' + (lang === "jp" ? "ベンチ" : "Bancs") + "</div>" + chips.join("") + "</div>";
+}
+function combatHTML() {
+  var c = combatData();
+  if (!c) return "";
+  COMBAT_PENDING = [];
+  var other = me === "julien" ? "ryo" : "julien";
+  var clockTxt = pick(DB.state.clock) || "";
+  var night = /nuit|深夜|夜/.test(clockTxt);
+  var title = lang === "jp"
+    ? "⚔️ 戦闘 — 第" + DB.state.turn + "ターン" + (c.round ? "・ラウンド" + c.round : "")
+    : "⚔️ Le combat — Tour n°" + DB.state.turn + (c.round ? " · Round " + c.round : "");
+  var sub = pick(c.title);
+  var soundOn = true;
+  try { soundOn = localStorage.getItem("sonActif") !== "0"; } catch (e) {}
+  var foes = (c.foes || []).map(function (f, i) { return foeSlotHTML(f, i); }).join("");
+  var allies = "";
+  [["julien"], ["ryo"]].forEach(function (w) {
+    var slug = w[0];
+    (((c.onField || {})[slug]) || []).forEach(function (id) {
+      var p = pokeById(id);
+      if (p && p.hpCur > 0) allies += allySlotHTML(p, slug, c);
+    });
+  });
+  var fc = foeCorners(c);
+  var h = '<section class="card combat-card" id="combatSection">' +
+    '<div class="combat-head"><h2 class="combat-title">' + esc(title) + "</h2>" +
+    (sub ? '<div class="combat-sub">' + esc(sub) + "</div>" : "") +
+    '<button type="button" class="sound-btn" id="soundBtn" aria-label="Son">' + (soundOn ? "🔊" : "🔇") + "</button></div>" +
+    '<div class="arena' + (night ? " night" : "") + '">' +
+    '<div class="cornerbar">' + (fc[0] || '<div class="corner ghost"></div>') + (fc[1] || '<div class="corner ghost"></div>') + "</div>" +
+    '<div class="crow foes">' + foes + "</div>" +
+    '<div class="crow allies">' + allies + "</div>" +
+    '<div class="cornerbar">' + playerCorner(me, c) + playerCorner(other, c) + "</div>" +
+    "</div>" + benchHTML(c) + "</section>";
+  return h;
+}
+function arenaSignature() {
+  var c = combatData();
+  if (!c) return "";
+  var ids = [];
+  ["julien", "ryo"].forEach(function (slug) { (((c.onField || {})[slug]) || []).forEach(function (id) { ids.push(id); }); });
+  var ps = ids.map(function (id) { var p = pokeById(id); return p ? [p.id, p.hpCur, p.hpMax, p.level] : [id]; });
+  return JSON.stringify({ c: c, p: ps, me: me, lang: lang, turn: DB.state.turn });
+}
+function animateArena() {
+  Array.prototype.forEach.call(document.querySelectorAll("#combatSection .cfill[data-pct]"), function (el) {
+    var pct = el.getAttribute("data-pct");
+    requestAnimationFrame(function () { requestAnimationFrame(function () { el.style.width = pct + "%"; }); });
+  });
+  var sounds = COMBAT_PENDING.slice();
+  COMBAT_PENDING = [];
+  COMBAT_SEEN = true;
+  sounds.forEach(function (s, i) { setTimeout(function () { sfx(s); }, i * 120); });
+}
+function bindCombat() {
+  var sec = $("combatSection");
+  if (!sec) return;
+  animateArena();
+  var sb = $("soundBtn");
+  if (sb) sb.addEventListener("click", function () {
+    var on = true;
+    try {
+      on = localStorage.getItem("sonActif") !== "0";
+      localStorage.setItem("sonActif", on ? "0" : "1");
+    } catch (e) {}
+    sb.textContent = on ? "🔇" : "🔊";
+    if (!on) sfx("clic");
+  });
+  Array.prototype.forEach.call(sec.querySelectorAll("[data-goto-team]"), function (el) {
+    el.addEventListener("click", function () {
+      teamView = el.getAttribute("data-goto-team");
+      tab = "teams"; buildNav(); renderBrand(); render();
+      window.scrollTo(0, 0);
+      var sc = document.querySelector(".dex-screen"); if (sc) sc.scrollTop = 0;
+    });
+  });
+  setupCombatPolling();
+}
+function setupCombatPolling() {
+  if (combatPollTimer) return;
+  combatPollTimer = setInterval(combatPollTick, 5000);
+}
+function combatPollTick() {
+  var sec = $("combatSection");
+  if (!sec || tab !== "home" || document.hidden) {
+    if (!sec && combatPollTimer) { clearInterval(combatPollTimer); combatPollTimer = null; }
+    return;
+  }
+  var before = arenaSignature();
+  Promise.all([
+    sbGet("/game_state?id=eq.1&select=data"),
+    sbGet("/pokemon?select=trainer_slug,species,data")
+  ]).then(function (res) {
+    var st = res[0][0] && res[0][0].data;
+    if (!st) return;
+    if (st.turn !== DB.state.turn) {
+      loadAll().then(function () { render(); }).catch(function () {});
+      return;
+    }
+    DB.state = st;
+    (res[1] || []).forEach(function (r) {
+      var d = r.data || {};
+      for (var i = 0; i < DB.pokemon.length; i++) {
+        if (DB.pokemon[i].id === d.id) { DB.pokemon[i] = d; break; }
+      }
+    });
+    if (!combatData()) { render(); return; }
+    if (arenaSignature() !== before) {
+      var el = $("combatSection");
+      if (el) { el.outerHTML = combatHTML(); bindCombat(); }
+    }
+  }).catch(function () { /* réseau : on réessaiera au prochain cycle */ });
+}
+document.addEventListener("visibilitychange", function () {
+  if (!document.hidden) combatPollTick();
+});
+
+/* ---------- Écran de victoire de badge ---------- */
+var LS_BADGES_SEEN = "jdr-ryo-badges-vus";
+function showBadgeOverlay(key, celebrate) {
+  var b = null, idx = -1;
+  BADGES.forEach(function (x, i) { if (x.key === key) { b = x; idx = i; } });
+  if (!b) return;
+  var old = document.querySelector(".badge-overlay");
+  if (old) old.remove();
+  var ov = document.createElement("div");
+  ov.className = "badge-overlay";
+  var confetti = "";
+  if (celebrate) {
+    var colors = ["#e3352c", "#ffd23e", "#2f9e44", "#2b6cb0", "#ff8ac2", "#ff9f1c"];
+    for (var i = 0; i < 28; i++) {
+      confetti += '<span class="confetti" style="left:' + Math.floor(Math.random() * 100) + "%;background:" +
+        colors[i % colors.length] + ";animation-delay:" + (Math.random() * 0.9).toFixed(2) + "s\"></span>";
+    }
+  }
+  var bname = lang === "jp" ? b.jp : b.fr;
+  ov.innerHTML = confetti +
+    '<div class="badge-card"><img class="badge-big" src="assets/badges/badge-' + b.img + '.png" alt="" onerror="this.style.display=\'none\'">' +
+    "<h3>🏅 " + esc(bname) + (lang === "jp" ? " を手に入れた！" : " obtenu !") + "</h3>" +
+    '<p class="muted">' + (lang === "jp" ? "バッジ " + (idx + 1) + " / 8" : "Badge n°" + (idx + 1) + " sur 8") + "</p>" +
+    '<p class="small muted">' + (lang === "jp" ? "タップで閉じる" : "Touche pour fermer") + "</p></div>";
+  ov.addEventListener("click", function () { ov.remove(); });
+  document.body.appendChild(ov);
+  if (celebrate) sfx("badge");
+}
+function checkBadgeCelebration() {
+  if (!me || !DB || !DB.characters) return;
+  var c = charOf(me);
+  var keys = (c && c.badges) || [];
+  var storeKey = LS_BADGES_SEEN + "_" + me, seen = null;
+  try { seen = JSON.parse(localStorage.getItem(storeKey) || "null"); } catch (e) {}
+  if (!Array.isArray(seen)) {
+    try { localStorage.setItem(storeKey, JSON.stringify(keys)); } catch (e) {}
+    return; /* premier chargement : initialisation silencieuse */
+  }
+  var fresh = keys.filter(function (k) { return seen.indexOf(k) < 0; });
+  if (fresh.length) {
+    try { localStorage.setItem(storeKey, JSON.stringify(keys)); } catch (e) {}
+    showBadgeOverlay(fresh[fresh.length - 1], true);
+  }
+}
+/* Les badges gagnés sont tappables dans le passeport : réouverture simple
+   de l'écran (sans confettis ni fanfare — la célébration est réservée au gain). */
+document.addEventListener("click", function (e) {
+  var cell = e.target && e.target.closest ? e.target.closest(".badge-cell[data-badge]") : null;
+  if (cell && !/(^|\s)off(\s|$)/.test(cell.className)) showBadgeOverlay(cell.getAttribute("data-badge"), false);
+});
 
 /* ================= Équipes ================= */
 var MOVE_JP_INDEX = null;

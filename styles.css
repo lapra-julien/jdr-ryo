@@ -528,3 +528,98 @@ details.place-fold{margin:0 0 8px}
    premier coup d'œil ; sélectionnée, elle prend le style .sel comme les autres. */
 .sugg-chip.fun{background:#fff6d8; border-style:dashed; border-color:var(--yellow2)}
 .sugg-chip.sel{background:var(--ink); border-color:var(--ink); border-style:solid; color:#fff; font-weight:700}
+
+/* ---------- Fenêtre de combat (adaptée de « Chant & Festin », 2026-11-27) ---------- */
+.combat-card{overflow:hidden}
+.combat-head{display:flex;align-items:flex-start;gap:8px}
+.combat-title{margin:0;font-size:1.02rem;flex:1}
+.combat-sub{font-size:.8rem;color:#6b6f9e;margin-top:2px}
+.sound-btn{flex:0 0 auto;border:2px solid var(--ink);background:var(--cream);border-radius:999px;
+  width:34px;height:34px;font-size:16px;line-height:1;cursor:pointer;box-shadow:0 2px 0 var(--ink)}
+.arena{
+  position:relative;margin-top:10px;border:3px solid var(--ink);border-radius:20px;overflow:hidden;
+  padding:10px;background:linear-gradient(#9fd8ff 0 46%,#86c95a 46%);
+}
+.arena.night{background:linear-gradient(#1d2a6b 0 46%,#2e5d33 46%)}
+.cornerbar{display:flex;justify-content:space-between;gap:8px;min-height:44px}
+.corner{background:rgba(255,255,255,.82);border:2px solid rgba(35,37,94,.35);border-radius:12px;
+  padding:4px 7px;min-width:86px}
+.corner.ghost{visibility:hidden}
+.corner-name{font-size:11px;font-weight:800;line-height:1.1;margin-bottom:3px}
+.balls{display:grid;grid-template-columns:repeat(3,21px);gap:3px}
+.cball{width:21px;height:21px;display:inline-block}
+.cball img{width:21px;height:21px;display:block}
+.cball:not(.ko) img{animation:cspin 2.6s linear infinite}
+.cball.ko img{filter:grayscale(1) brightness(.32)}
+.cball.onfield{outline:2px solid var(--yellow);outline-offset:1px;border-radius:50%}
+.cball[data-goto-team]{cursor:pointer}
+@keyframes cspin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.crow{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;padding:4px 0}
+.slot{display:flex;flex-direction:column;align-items:center;min-height:150px;width:min(46%,190px);position:relative}
+.slot .slot-sprite{position:relative;line-height:0}
+.slot .slot-sprite::after{
+  content:"";position:absolute;left:50%;bottom:2px;transform:translateX(-50%);
+  width:74px;height:14px;border-radius:50%;background:rgba(20,30,20,.28);z-index:0;
+}
+.slot.foe .slot-sprite::after{width:58px;height:11px}
+.csprite{width:104px;height:104px;object-fit:contain;image-rendering:pixelated;
+  filter:drop-shadow(0 3px 3px rgba(0,0,0,.3));position:relative;z-index:1}
+.csprite-none{width:104px;height:104px;display:flex;align-items:center;justify-content:center;font-size:44px}
+.hpbox{
+  background:rgba(255,253,246,.95);border:2px solid var(--ink);border-radius:12px;
+  padding:5px 8px;width:100%;box-shadow:0 2px 0 rgba(35,37,94,.35);z-index:2;
+}
+.slot.foe .hpbox{margin-bottom:2px}
+.slot.ally .hpbox{margin-top:2px}
+.hpbox-top{display:flex;justify-content:space-between;gap:6px;align-items:baseline}
+.hpbox-name{font-weight:800;font-size:.82rem;line-height:1.15}
+.hpbox-lv{font-size:.72rem;font-weight:700;color:#6b6f9e;white-space:nowrap}
+.cbar{background:#3a3f6b;border-radius:999px;height:9px;overflow:hidden;margin:4px 0 3px}
+.cbar>i.cfill{display:block;height:100%;background:var(--green);border-radius:999px;transition:width .7s ease}
+.cbar>i.cfill.mid{background:var(--orange)}
+.cbar>i.cfill.low{background:var(--red)}
+.cbar.mini{height:6px;margin:2px 0}
+.hpbox-num{font-size:.72rem;font-weight:700}
+.hpbox-owner{color:#c1272d}
+.status-pills{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
+.status-pill{font-size:.64rem;font-weight:800;border-radius:999px;padding:1px 7px;background:#e3e0f5;color:var(--ink)}
+.status-pill.st-poison{background:#e3c8f2}
+.status-pill.st-sleep{background:#d7dbe2}
+.status-pill.st-conf{background:#ffd3e8}
+.status-pill.st-para{background:#ffe98a}
+.status-pill.st-burn{background:#ffc59e}
+.status-pill.st-frost{background:#bfe6ff}
+.status-pill.st-slow{background:#c3d9f7}
+.slot.hit .csprite{animation:hitShake .45s ease}
+.slot.pop .csprite{animation:popIn .38s ease}
+@keyframes hitShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}45%{transform:translateX(6px)}70%{transform:translateX(-4px)}}
+@keyframes popIn{0%{transform:scale(.4);opacity:.2}100%{transform:scale(1);opacity:1}}
+.bench{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.bench-title{width:100%;font-size:.74rem;font-weight:800;color:#6b6f9e;letter-spacing:.04em}
+.bchip{
+  display:flex;gap:7px;align-items:center;text-align:left;flex:1 1 150px;max-width:230px;
+  background:var(--card);border:2px solid var(--line);border-radius:12px;padding:5px 8px;
+  font:inherit;color:inherit;
+}
+button.bchip{cursor:pointer}
+.bchip.ko{opacity:.55;filter:grayscale(.7)}
+.bchip-img{width:38px;height:38px;object-fit:contain;image-rendering:pixelated;flex:0 0 auto}
+.bchip .csprite-none{width:38px;height:38px;font-size:20px}
+.bchip-main{display:flex;flex-direction:column;min-width:0;flex:1}
+.bchip-name{font-size:.74rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bchip-hp{font-size:.68rem;font-weight:700;color:#6b6f9e}
+/* ---------- Écran de victoire de badge ---------- */
+.badge-overlay{
+  position:fixed;inset:0;z-index:60;background:rgba(16,12,40,.72);
+  display:flex;align-items:center;justify-content:center;padding:18px;overflow:hidden;
+}
+.badge-card{
+  background:linear-gradient(165deg,#fff8ea,#ffe9a8);border:3px solid #b8860b;border-radius:20px;
+  box-shadow:0 10px 0 rgba(0,0,0,.35);padding:22px 26px;text-align:center;max-width:320px;width:100%;
+  position:relative;z-index:2;
+}
+.badge-card h3{margin:10px 0 4px;font-size:1.15rem;color:var(--ink)}
+.badge-big{width:120px;height:120px;object-fit:contain}
+.confetti{position:absolute;top:-14px;width:9px;height:15px;border-radius:2px;z-index:1;
+  animation:confFall 2.8s ease-in forwards}
+@keyframes confFall{to{transform:translateY(105vh) rotate(560deg);opacity:.85}}
